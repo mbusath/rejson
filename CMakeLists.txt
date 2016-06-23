@@ -11,13 +11,16 @@ else ()
 endif ()
 
 include(CTest)
-
 enable_testing()
-add_executable(test_object test/test_object.c src/object.c src/path.c src/json_path.c)
 
+add_executable(test_object test/test_object.c src/object.c src/path.c src/json_path.c)
 add_test(test_object test_object)
 
-add_library(rejson src/object.c)
+add_executable(test_json_object test/test_json_object.c src/json_object src/object.c src/jsonsl.c)
+add_test(test_json_object test_json_object)
+
+add_library(rejson SHARED src/module.c src/object.c src/jsonsl.c)
+set_target_properties(rejson PROPERTIES PREFIX "")
 
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})
 set(CPACK_PROJECT_VERSION ${PROJECT_VERSION})

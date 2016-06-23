@@ -24,7 +24,7 @@ typedef enum {
 struct t_node;
 
 /*
-* Internal representation of a string with  data and length
+* Internal representation of a string with data and length
 */
 typedef struct {
     const char *data;
@@ -42,7 +42,7 @@ typedef struct {
 
 /*
 * Internal representation of a key-value pair in an object. 
-* The key is a NULL terminated C-string, the value is nother node
+* The key is a NULL terminated C-string, the value is another node
 */
 typedef struct {
     const char *key;
@@ -103,6 +103,13 @@ Node *NewStringNode(const char *s, u_int32_t len);
 * NOTE: The string's value will be copied to a newly allocated string
 */
 Node *NewCStringNode(const char *su);
+
+/**
+* Create a new keyval node from a C-string and its length as key and a pointer
+* to a Node as value.
+* NOTE: The string's value will be copied to a newly allocated string
+*/
+Node *NewKeyValNode(const char *key, u_int32_t len, Node* n);
 
 /** Create a new zero length array node with the given capacity */
 Node *NewArrayNode(u_int32_t cap);

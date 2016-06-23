@@ -36,6 +36,13 @@ Node *NewStringNode(const char *s, u_int32_t len) {
 
 Node *NewCStringNode(const char *s) { return NewStringNode(s, strlen(s)); }
 
+Node *NewKeyValNode(const char *key, u_int32_t len, Node* n) {
+    Node *ret = __newNode(N_KEYVAL);
+    ret->value.kvval.key = strndup(key,len);
+    ret->value.kvval.val = n;
+    return ret;
+}
+
 Node *NewArrayNode(u_int32_t cap) {
     Node *ret = __newNode(N_ARRAY);
     ret->value.arrval.cap = cap;
@@ -167,11 +174,8 @@ int Node_DictSet(Node *obj, const char *key, Node *n) {
         o->entries = realloc(o->entries, o->cap * sizeof(t_keyval));
     }
 
-    kv = __newNode(N_KEYVAL);
-    kv->value.kvval.key = strdup(key);
-    kv->value.kvval.val = n;
-
-    o->entries[o->len++] = kv;
+    // TODO: shouldn't key names also be non-null-terminated strings?
+    o->entries[o->len++] = NewKeyValNode(key, strlen(key), n);
 
     return OBJ_OK;
 }
