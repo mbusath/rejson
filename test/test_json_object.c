@@ -217,7 +217,7 @@ MU_TEST(test_oj_null) {
     char *str = NULL;
 
     n = NULL;
-    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, 0, &str));
+    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, NULL, NULL, NULL, &str));
     mu_check(str);
     mu_check(0 == strncmp("null", str, strlen(str)));
     free(str);
@@ -229,7 +229,7 @@ MU_TEST(test_oj_boolean) {
 
     n = NewBoolNode(0);
     mu_check(n);
-    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, 0, &str));
+    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, NULL, NULL, NULL, &str));
     mu_check(str);
     mu_check(0 == strncmp("false", str, strlen(str)));
     free(str);
@@ -237,7 +237,7 @@ MU_TEST(test_oj_boolean) {
 
     n = NewBoolNode(1);
     mu_check(n);
-    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, 0, &str));
+    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, NULL, NULL, NULL, &str));
     mu_check(str);
     mu_check(0 == strncmp("true", str, strlen(str)));
     free(str);
@@ -250,7 +250,7 @@ MU_TEST(test_oj_integer) {
 
     n = NewIntNode(0);
     mu_check(n);
-    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, 0, &str));
+    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, NULL, NULL, NULL, &str));
     mu_check(str);
     mu_check(0 == strncmp("0", str, strlen(str)));
     free(str);
@@ -258,7 +258,7 @@ MU_TEST(test_oj_integer) {
 
     n = NewIntNode(42);
     mu_check(n);
-    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, 0, &str));
+    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, NULL, NULL, NULL, &str));
     mu_check(str);
     mu_check(0 == strncmp("42", str, strlen(str)));
     free(str);
@@ -266,7 +266,7 @@ MU_TEST(test_oj_integer) {
 
     n = NewIntNode(-6379);
     mu_check(n);
-    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, 0, &str));
+    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, NULL, NULL, NULL, &str));
     mu_check(str);
     mu_check(0 == strncmp("-6379", str, strlen(str)));
     free(str);
@@ -279,7 +279,7 @@ MU_TEST(test_oj_string) {
 
     n = NewCStringNode("foo");
     mu_check(n);
-    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, 0, &str));
+    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, NULL, NULL, NULL, &str));
     mu_check(str);
     mu_check(0 == strncmp(_JSTR(foo), str, strlen(str)));
     free(str);
@@ -293,7 +293,7 @@ MU_TEST(test_oj_keyval) {
 
     n = NewKeyValNode("foo", 3, NewCStringNode("bar"));
     mu_check(n);
-    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, 0, &str));
+    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, NULL, NULL, NULL, &str));
     mu_check(str);
     mu_check(0 == strncmp(json, str, strlen(str)));
     free(str);
@@ -308,7 +308,7 @@ MU_TEST(test_oj_dict) {
     n = NewDictNode(1);
     mu_check(n);
     mu_check(OBJ_OK == Node_DictSet(n, "foo", NewCStringNode("bar")));
-    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, 0, &str));
+    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, NULL, NULL, NULL, &str));
     mu_check(str);
     mu_check(0 == strncmp(json, str, strlen(str)));
     free(str);
@@ -324,7 +324,7 @@ MU_TEST(test_oj_array) {
     mu_check(n);
     mu_check(OBJ_OK == Node_ArrayAppend(n, NewCStringNode("foo")));
     mu_check(OBJ_OK == Node_ArrayAppend(n, NewIntNode(42)));
-    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, 0, &str));
+    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, NULL, NULL, NULL, &str));
     mu_check(str);
     mu_check(0 == strncmp(json, str, strlen(str)));
     free(str);

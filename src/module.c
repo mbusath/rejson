@@ -29,7 +29,7 @@
 #include "object.h"
 #include "json_object.h"
 #include "json_path.h"
-#include "../deps/rmutil/util.h"
+// #include "../deps/rmutil/util.h"
 #include <string.h>
 
 #define JSONTYPE_ENCODING_VERSION 0
@@ -279,7 +279,7 @@ int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
 
     // serialize it
     char *str = NULL;
-    if (JSONOBJECT_OK != SerializeNodeToJSON(objTarget, 1, &str)) {
+    if (JSONOBJECT_OK != SerializeNodeToJSON(objTarget, "\t", " ", "\n", &str)) {
         RedisModule_ReplyWithError(ctx, REJSON_ERROR_SERIALIZE);
         return REDISMODULE_ERR;
     }

@@ -11,16 +11,11 @@
 */
 
 /* === Parser === */
-typedef enum {
-    jo_error_type_ok,
-    jo_error_type_jsl,
-    jo_error_type_obj,
-    jo_error_type_jo
-} jo_error_type_t;
+typedef enum { JO_ERROR_OK, JO_ERROR_JSL, JO_ERROR_OBJ, JO_ERROR_JO } JsonObjectError;
 
 /* A custom context for the JSON lexer. */
 typedef struct {
-    jo_error_type_t error_type;
+    JsonObjectError error_type;
     union {
         jsonsl_error_t jsl;
         int obj;
@@ -28,15 +23,16 @@ typedef struct {
     } error;
     Node **nodes;
     int len;
-} json_object_context_t;
+} JsonObjectContext;
 
 /* Decalre it. */
 static int is_allowed_whitespace(unsigned c);
 
-void push_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *state,
-                   const jsonsl_char_t *at) {
-    json_object_context_t *joctx = (json_object_context_t *)jsn->data;
+void pushCallback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *state,
+                  const jsonsl_char_t *at) {
+    JsonObjectContext *joctx = (JsonObjectContext *)jsn->data;
 
+    // only objects (dictionaries) and lists (arrays) create a container on push
     switch (state->type) {
         case JSONSL_T_OBJECT:
             if (!(joctx->nodes[joctx->len] = NewDictNode(1))) goto alloc_error;
@@ -50,15 +46,15 @@ void push_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st 
     return;
 
 alloc_error:
-    joctx->error_type = jo_error_type_jo;
+    joctx->error_type = JO_ERROR_JO;
     joctx->error.jo = JSONOBJECT_ERROR_ALLOC;
     jsonsl_stop(jsn);
     return;
 }
 
-void pop_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *state,
-                  const jsonsl_char_t *at) {
-    json_object_context_t *joctx = (json_object_context_t *)jsn->data;
+void popCallback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *state,
+                 const jsonsl_char_t *at) {
+    JsonObjectContext *joctx = (JsonObjectContext *)jsn->data;
 
     Node *n = NULL;
 
@@ -114,16 +110,16 @@ void pop_callback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *
     return;
 
 alloc_error:
-    joctx->error_type = jo_error_type_jo;
+    joctx->error_type = JO_ERROR_JO;
     joctx->error.jo = JSONOBJECT_ERROR_ALLOC;
     jsonsl_stop(jsn);
     return;
 }
 
-int error_callback(jsonsl_t jsn, jsonsl_error_t err, struct jsonsl_state_st *state, char *errat) {
-    json_object_context_t *joctx = (json_object_context_t *)jsn->data;
+int errorCallback(jsonsl_t jsn, jsonsl_error_t err, struct jsonsl_state_st *state, char *errat) {
+    JsonObjectContext *joctx = (JsonObjectContext *)jsn->data;
 
-    joctx->error_type = jo_error_type_jsl;
+    joctx->error_type = JO_ERROR_JSL;
     joctx->error.jsl = err;
     jsonsl_stop(jsn);
     return 0;
@@ -152,24 +148,24 @@ int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err) {
     /* The lexer. */
     jsonsl_t jsn = jsonsl_new(levels);
     if (!jsn) goto error;
-    jsn->error_callback = error_callback;
-    jsn->action_callback_POP = pop_callback;
-    jsn->action_callback_PUSH = push_callback;
+    jsn->error_callback = errorCallback;
+    jsn->action_callback_POP = popCallback;
+    jsn->action_callback_PUSH = pushCallback;
     jsonsl_enable_all_callbacks(jsn);
 
     /* Set up our custom json_object context. */
-    json_object_context_t *joctx = calloc(1, sizeof(json_object_context_t));
+    JsonObjectContext *joctx = calloc(1, sizeof(JsonObjectContext));
     if (!joctx) goto error;
     joctx->nodes = calloc(levels, sizeof(Node *));
     if (!joctx->nodes) goto error;
-    joctx->error_type = jo_error_type_ok;
+    joctx->error_type = JO_ERROR_OK;
     jsn->data = joctx;
 
     /* Feed the lexer. */
     jsonsl_feed(jsn, _buf, _len);
 
     /* Finalize. */
-    if (jo_error_type_ok == joctx->error_type) {
+    if (JO_ERROR_OK == joctx->error_type) {
         /* Extract literals from the list. */
         if (is_literal) {
             Node_ArrayItem(joctx->nodes[0], 0, node);
@@ -202,9 +198,9 @@ error:
         }
 
         if (err) {
-            if (jo_error_type_jsl == joctx->error_type) {
+            if (JO_ERROR_JSL == joctx->error_type) {
                 sprintf(*err, "ERR JSON lexer error: %s", jsonsl_strerror(joctx->error.jsl));
-            } else if (jo_error_type_obj == joctx->error_type) {
+            } else if (JO_ERROR_OBJ == joctx->error_type) {
                 sprintf(*err, "ERR Object error: %d", joctx->error.obj);
             } else {
                 sprintf(*err, "ERR JSONObject object error: %d", joctx->error.jo);
@@ -219,20 +215,21 @@ error:
 
 /* === Serializer === */
 typedef struct {
-    size_t len;        // buffer length
-    size_t cap;        // buffer capacity
-    char *buf;         // buffer
-    int depth;         // current depth
-    int prettify;      // minify or prettify
-    int inkey;         // currently printing a hash key
-    char *indentstr;   // indentation string
-    size_t indentlen;  // length of indent string
-    char *breakstr;    // linebreak string
-    size_t breaklen;   // linebreak of indent string
-} json_builder_t;
+    size_t len;               // buffer length
+    size_t cap;               // buffer capacity
+    char *buf;                // buffer
+    int depth;                // current depth
+    int inkey;                // currently printing a hash key
+    const char *indentstr;    // indentation string
+    size_t indentlen;         // length of indent string
+    const char *kvindentstr;  // indentation string after key
+    size_t kvindentlen;       // length of indent string after key
+    const char *newlinestr;   // linebreak string
+    size_t newlinelen;        // linebreak of indent string
+} JsonBuilder;
 
 /* Grows the builder's buffer if needed. */
-static char *ensure(json_builder_t *b, int needed) {
+static char *ensure(JsonBuilder *b, int needed) {
     needed += b->len;
     if (needed <= b->cap) return b->buf + b->len;
 
@@ -258,16 +255,16 @@ static char *ensure(json_builder_t *b, int needed) {
 }
 
 /* Returns the buffer's current length. */
-static int update(json_builder_t *b) {
+static int update(JsonBuilder *b) {
     char *str;
     str = b->buf + b->len;
     return b->len + strlen(str);
 }
 
-static char *indent(json_builder_t *b) {
+static char *indent(JsonBuilder *b) {
     char *str = 0;
 
-    if (b->prettify) {
+    if (b->indentlen) {
         str = ensure(b, b->indentlen * b->depth + 1);
         if (str) {
             for (int i = 0; i < b->depth; i++) {
@@ -283,13 +280,13 @@ static char *indent(json_builder_t *b) {
 }
 
 /* Decalre it. */
-static char *serialize_Node(Node *n, json_builder_t *b);
+static char *serialize_Node(Node *n, JsonBuilder *b);
 
-static char *serialize_Dict(Node *n, json_builder_t *b) {
+static char *serialize_Dict(Node *n, JsonBuilder *b) {
     char *str = 0;
 
-    str = ensure(b, b->prettify * b->breaklen + 2);
-    if (str) sprintf(str, "%s%s", "{", b->breakstr);
+    str = ensure(b, b->newlinelen + 2);
+    if (str) sprintf(str, "%s%s", "{", b->newlinestr);
     b->len = update(b);
     b->depth++;
 
@@ -299,16 +296,16 @@ static char *serialize_Dict(Node *n, json_builder_t *b) {
         str = serialize_Node(n->value.dictval.entries[0], b);
         if (str && len > 1) {
             for (int i = 1; i < len; i++) {
-                str = ensure(b, b->prettify * b->breaklen + 2);
-                if (str) sprintf(str, ",%s", b->breakstr);
+                str = ensure(b, b->newlinelen + 2);
+                if (str) sprintf(str, ",%s", b->newlinestr);
                 b->len = update(b);
                 str = indent(b);
                 str = serialize_Node(n->value.dictval.entries[i], b);
                 b->len = update(b);
             }
         }
-        str = ensure(b, b->prettify * b->breaklen + 2);
-        if (str) sprintf(str, "%s", b->breakstr);
+        str = ensure(b, b->newlinelen + 2);
+        if (str) sprintf(str, "%s", b->newlinestr);
     }
 
     b->depth--;
@@ -320,11 +317,11 @@ static char *serialize_Dict(Node *n, json_builder_t *b) {
     return str;
 }
 
-static char *serialize_Array(Node *n, json_builder_t *b) {
+static char *serialize_Array(Node *n, JsonBuilder *b) {
     char *str = 0;
 
-    str = ensure(b, b->prettify * b->breaklen + 2);
-    if (str) sprintf(str, "%s%s", "[", b->breakstr);
+    str = ensure(b, b->newlinelen + 2);
+    if (str) sprintf(str, "%s%s", "[", b->newlinestr);
     b->len = update(b);
     b->depth++;
 
@@ -334,16 +331,16 @@ static char *serialize_Array(Node *n, json_builder_t *b) {
         str = serialize_Node(n->value.arrval.entries[0], b);
         if (str && len > 1) {
             for (int i = 1; i < len; i++) {
-                str = ensure(b, b->prettify * b->breaklen + 2);
-                if (str) sprintf(str, ",%s", b->breakstr);
+                str = ensure(b, b->newlinelen + 2);
+                if (str) sprintf(str, ",%s", b->newlinestr);
                 b->len = update(b);
                 str = indent(b);
                 str = serialize_Node(n->value.dictval.entries[i], b);
                 b->len = update(b);
             }
         }
-        str = ensure(b, b->prettify * b->breaklen + 2);
-        if (str) sprintf(str, "%s", b->breakstr);
+        str = ensure(b, b->newlinelen + 2);
+        if (str) sprintf(str, "%s", b->newlinestr);
     }
 
     b->depth--;
@@ -355,7 +352,7 @@ static char *serialize_Array(Node *n, json_builder_t *b) {
     return str;
 }
 
-static char *serialize_String(Node *n, json_builder_t *b) {
+static char *serialize_String(Node *n, JsonBuilder *b) {
     char *str = 0;
 
     // TODO: escapes and shit!
@@ -365,7 +362,7 @@ static char *serialize_String(Node *n, json_builder_t *b) {
     return str;
 }
 
-static char *serialize_Node(Node *n, json_builder_t *b) {
+static char *serialize_Node(Node *n, JsonBuilder *b) {
     char *str = 0;
 
     if (!n) {
@@ -402,8 +399,8 @@ static char *serialize_Node(Node *n, json_builder_t *b) {
                 str = serialize_String(n, b);
                 break;
             case N_KEYVAL:
-                str = ensure(b, strlen(n->value.kvval.key) + b->prettify + 4);
-                if (str) sprintf(str, "\"%s\":%s", n->value.kvval.key, b->prettify ? " " : "");
+                str = ensure(b, strlen(n->value.kvval.key) + b->kvindentlen + 4);
+                if (str) sprintf(str, "\"%s\":%s", n->value.kvval.key, b->kvindentstr);
                 b->len = update(b);
                 b->inkey = 1;
                 str = serialize_Node(n->value.kvval.val, b);
@@ -425,19 +422,18 @@ static char *serialize_Node(Node *n, json_builder_t *b) {
     return str;
 }
 
-int SerializeNodeToJSON(const Node *node, int prettify, char **json) {
-    json_builder_t b = {0};
-    b.prettify = prettify;
-    if (b.prettify) {
-        b.indentstr = "  ";
-        b.breakstr = "\n";
-    } else {
-        b.indentstr = "";
-        b.breakstr = "";
-    }
-    b.breaklen = strlen(b.breakstr);
+int SerializeNodeToJSON(const Node *node, const char *indentstr, const char *kvindentstr,
+                        const char *newlinestr, char **json) {
+// set up the builder
+    JsonBuilder b = {0};
+    b.indentstr = indentstr ? indentstr : "";
+    b.kvindentstr = kvindentstr ? kvindentstr : "";
+    b.newlinestr = newlinestr ? newlinestr : "";
     b.indentlen = strlen(b.indentstr);
+    b.kvindentlen = strlen(b.kvindentstr);
+    b.newlinelen = strlen(b.newlinestr);
 
+    // the real work
     serialize_Node((Node *)node, &b);
     if (!b.len) return JSONOBJECT_ERROR;
 

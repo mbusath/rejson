@@ -21,6 +21,7 @@ int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err);
 /**
 * Produces a JSON serialization from an object.
 */
-int SerializeNodeToJSON(const Node *node, int prettify, char **json);
+int SerializeNodeToJSON(const Node *node, const char *indentstr, const char *kvindentstr,
+                        const char *newlinestr, char **json);
 
 #endif
