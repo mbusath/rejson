@@ -6,7 +6,6 @@
 
 #define JSONOBJECT_OK 0
 #define JSONOBJECT_ERROR 1
-#define JSONOBJECT_ERROR_ALLOC 2
 
 /**
 * Parses a JSON stored in `buf` of size `len` and creates an object.
