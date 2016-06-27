@@ -1,5 +1,6 @@
 #include "path.h"
 #include <sys/param.h>
+#include "rmalloc.h"
 
 Node *__pathNode_eval(PathNode *pn, Node *n, PathError *err) {
     *err = E_OK;

@@ -1,7 +1,8 @@
+#include "object.h"
 #include <sys/param.h>
 #include <string.h>
 #include <stdio.h>
-#include "object.h"
+#include "rmalloc.h"
 
 Node *__newNode(NodeType t) {
     Node *ret = malloc(sizeof(Node));
@@ -69,7 +70,7 @@ void __node_FreeObj(Node *n) {
     for (int i = 0; i < n->value.dictval.len; i++) {
         Node_Free(n->value.dictval.entries[i]);
     }
-    free(n->value.dictval.entries);
+    if (n->value.dictval.entries) free(n->value.dictval.entries);
     free(n);
 }
 

@@ -1,5 +1,6 @@
 #include "json_path.h"
 #include <string.h>
+#include "rmalloc.h"
 
 int _tokenizePath(const char *json, size_t len, SearchPath *path) {
     tokenizerState st = S_NULL;
@@ -115,9 +116,15 @@ int _tokenizePath(const char *json, size_t len, SearchPath *path) {
         }
         offset++;
         pos++;
+        // ident string must end if len reached
+        if (S_IDENT == st && len == offset) {
+            st = S_NULL;
+            tok.type = T_KEY;
+            goto tokenend;
+        }
         continue;
     tokenend : {
-        printf("token: %.*s\n", tok.len, tok.s);
+        // printf("token: %.*s\n", (int) tok.len, tok.s);
         if (tok.type == T_INDEX) {
             // convert the string to int. we can't use atoi because it expects
             // NULL
@@ -143,7 +150,7 @@ int _tokenizePath(const char *json, size_t len, SearchPath *path) {
     }
 
 syntaxerror:
-    printf("syntax error at offset %zd ('%c')\n", offset, json[offset]);
+    // printf("syntax error at offset %zd ('%c')\n", offset, json[offset]);
     return OBJ_ERR;
 }
 

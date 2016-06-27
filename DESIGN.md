@@ -29,9 +29,11 @@ Proposed API for the module:
 ```
 JSON.SET <key> <path> <json> [SCHEMA <schema_key>]
 
-JSON.GET <key> [<path>]
+JSON.GET <key> [FORMAT PRETTIFY|MINIFY] [INDENT <indentation-string>] [BREAK <line-break-string>] [<path>]
 
 JSON.MGET <path> <key> [<key> ...]
+
+JSON.APPEND <key> <path> <json>
 
 JSON.DEL <key> <path>
 

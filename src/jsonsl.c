@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <limits.h>
 #include <ctype.h>
+#include "rmalloc.h"
 
 #ifdef JSONSL_USE_METRICS
 #define XMETRICS \
