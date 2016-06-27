@@ -15,15 +15,21 @@ typedef enum { JO_ERROR_OK, JO_ERROR_JSL, JO_ERROR_OBJ, JO_ERROR_JO } JsonObject
 
 /* A custom context for the JSON lexer. */
 typedef struct {
-    JsonObjectError error_type;
+    JsonObjectError error_type;  // type of error, if any
     union {
         jsonsl_error_t jsl;
         int obj;
         int jo;
-    } error;
-    Node **nodes;
-    int len;
+    } error;       // error value
+    Node **nodes;  // private stack of created nodes
+    int len;       // length of nodes array
 } JsonObjectContext;
+
+void _pushNode(JsonObjectContext *joctx, Node *n) { joctx->nodes[joctx->len++] = n; }
+Node *_popNode(JsonObjectContext *joctx) { return joctx->nodes[--joctx->len]; }
+void _rollupNode(JsonObjectContext *joctx) {
+    // NOTE: rhe caller is responsible for a sane stack of sufficient length
+}
 
 /* Decalre it. */
 static int is_allowed_whitespace(unsigned c);
@@ -35,12 +41,10 @@ void pushCallback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *
     // only objects (dictionaries) and lists (arrays) create a container on push
     switch (state->type) {
         case JSONSL_T_OBJECT:
-            joctx->nodes[joctx->len] = NewDictNode(1);
-            joctx->len++;
+            _pushNode(joctx, NewDictNode(1));
             break;
         case JSONSL_T_LIST:
-            joctx->nodes[joctx->len] = NewArrayNode(1);
-            joctx->len++;
+            _pushNode(joctx, NewArrayNode(1));
             break;
     }
 }
@@ -49,59 +53,51 @@ void popCallback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *s
                  const jsonsl_char_t *at) {
     JsonObjectContext *joctx = (JsonObjectContext *)jsn->data;
 
-    Node *n;
-
-    /* Hashkeys as well as numeric and Boolean literals create nodes. */
-    if (JSONSL_T_STRING == state->type) {
-        n = NewStringNode(jsn->base + state->pos_begin + 1, state->pos_cur - state->pos_begin - 1);
-        joctx->nodes[joctx->len++] = n;
-    } else if (JSONSL_T_SPECIAL == state->type) {
-        if (state->special_flags & JSONSL_SPECIALf_NUMERIC) {
-            if (state->special_flags & JSONSL_SPECIALf_FLOAT) {
-                n = NewDoubleNode(atof(jsn->base + state->pos_begin));
-                joctx->nodes[joctx->len++] = n;
-            } else {
-                n = NewIntNode(atoi(jsn->base + state->pos_begin));
-                joctx->nodes[joctx->len++] = n;
+    // This is a good time to create literals and hashkeys on the stack
+    switch (state->type) {
+        case JSONSL_T_STRING:
+            _pushNode(joctx, NewStringNode(jsn->base + state->pos_begin + 1,
+                                           state->pos_cur - state->pos_begin - 1));
+            break;
+        case JSONSL_T_SPECIAL:
+            if (state->special_flags & JSONSL_SPECIALf_NUMERIC) {
+                if (state->special_flags & JSONSL_SPECIALf_FLOAT) {
+                    _pushNode(joctx, NewDoubleNode(atof(jsn->base + state->pos_begin)));
+                } else {
+                    _pushNode(joctx, NewIntNode(atoi(jsn->base + state->pos_begin)));
+                }
+            } else if (state->special_flags & JSONSL_SPECIALf_BOOLEAN) {
+                _pushNode(joctx, NewBoolNode(state->special_flags & JSONSL_SPECIALf_TRUE));
+            } else if (state->special_flags & JSONSL_SPECIALf_NULL) {
+                _pushNode(joctx, NULL);
             }
-        } else if (state->special_flags & JSONSL_SPECIALf_BOOLEAN) {
-            n = NewBoolNode(state->special_flags & JSONSL_SPECIALf_TRUE);
-            joctx->nodes[joctx->len++] = n;
-        } else if (state->special_flags & JSONSL_SPECIALf_NULL) {
-            joctx->nodes[joctx->len++] = NULL;
-        }
-    } else if (JSONSL_T_HKEY == state->type) {
-        n = NewKeyValNode(jsn->base + state->pos_begin + 1, state->pos_cur - state->pos_begin - 1,
-                          NULL);
-        joctx->nodes[joctx->len++] = n;
+            break;
+        case JSONSL_T_HKEY:
+            _pushNode(joctx, NewKeyValNode(jsn->base + state->pos_begin + 1,
+                                           state->pos_cur - state->pos_begin - 1, NULL));
+            break;
     }
 
-    /* jsonsl's hashkeys are only temporarily put in nodes. */
-    if (state->type != JSONSL_T_HKEY) {
-        if (joctx->len > 1) {
-            if (joctx->nodes[joctx->len - 2]->type == N_KEYVAL) {
-                if (OBJ_OK != Node_DictSet(joctx->nodes[joctx->len - 3],
-                                           joctx->nodes[joctx->len - 2]->value.kvval.key,
-                                           joctx->nodes[joctx->len - 1]))
-                    goto object_error;
-                Node_Free(joctx->nodes[joctx->len - 2]);
-                joctx->nodes[joctx->len - 2] = joctx->nodes[joctx->len - 1];
-                joctx->len -= 2;
-            } else if (joctx->nodes[joctx->len - 2]->type == N_ARRAY) {
-                if (OBJ_OK !=
-                    Node_ArrayAppend(joctx->nodes[joctx->len - 2], joctx->nodes[joctx->len - 1]))
-                    goto object_error;
-                joctx->len -= 1;
-            }
+    // Basically anything that pops from the JSON lexer needs to be set in its parent, except
+    // 1. The root element (i.e. end of JSON)
+    // 2. Hashkeys are postponed until their values are popped (resulting in a double-pop, a.k.a DP)
+    if (joctx->len > 1 && state->type != JSONSL_T_HKEY) {
+        NodeType p = joctx->nodes[joctx->len - 2]->type;
+        switch (p) {
+            case N_DICT:
+                Node_DictSetKeyVal(joctx->nodes[joctx->len - 1], _popNode(joctx));
+                break;
+            case N_ARRAY:
+                Node_ArrayAppend(joctx->nodes[joctx->len - 1], _popNode(joctx));
+                break;
+            case N_KEYVAL:
+                joctx->nodes[joctx->len - 2]->value.kvval.val = _popNode(joctx);
+                Node_DictSetKeyVal(joctx->nodes[joctx->len - 1], _popNode(joctx));
+                break;
+            default:
+                break;
         }
     }
-    return;
-
-object_error:
-    joctx->error_type = JO_ERROR_OBJ;
-    joctx->error.obj = OBJ_ERR;
-    jsonsl_stop(jsn);
-    return;
 }
 
 int errorCallback(jsonsl_t jsn, jsonsl_error_t err, struct jsonsl_state_st *state, char *errat) {
@@ -153,14 +149,15 @@ int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err) {
 
     /* Finalize. */
     if (JO_ERROR_OK == joctx->error_type) {
-        /* Extract literals from the list. */
+        /* Extract the literal and discard the list. */
         if (is_literal) {
             Node_ArrayItem(joctx->nodes[0], 0, node);
             Node_ArraySet(joctx->nodes[0], 0, NULL);
-            Node_Free(joctx->nodes[0]);
+            Node_Free(_popNode(joctx));
             free(_buf);
-        } else
-            *node = joctx->nodes[0];
+        } else {
+            *node = _popNode(joctx);
+        }
     } else {
         if (err) {
             if (JO_ERROR_JSL == joctx->error_type) {

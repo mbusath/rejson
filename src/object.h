@@ -3,14 +3,14 @@
 
 #include <stdlib.h>
 
-// Return code from successful ops 
+// Return code from successful ops
 #define OBJ_OK 0
 // Return code from failed ops
 #define OBJ_ERR 1
 
 /**
-* NodeType represents the type of a node in an object. 
-*/ 
+* NodeType represents the type of a node in an object.
+*/
 typedef enum {
     N_STRING,
     N_NUMBER,
@@ -41,7 +41,7 @@ typedef struct {
 } t_array;
 
 /*
-* Internal representation of a key-value pair in an object. 
+* Internal representation of a key-value pair in an object.
 * The key is a NULL terminated C-string, the value is another node
 */
 typedef struct {
@@ -49,10 +49,10 @@ typedef struct {
     struct t_node *val;
 } t_keyval;
 
-/* 
-* Internal representation of a dictionary node. 
+/*
+* Internal representation of a dictionary node.
 * Currently implemented as a list of key-value pairs, will be converted
-* to a hash-table on big objects in the future 
+* to a hash-table on big objects in the future
 */
 typedef struct {
     struct t_node **entries;
@@ -92,13 +92,13 @@ Node *NewDoubleNode(double val);
 /** Create a new integer node with the given value */
 Node *NewIntNode(int64_t val);
 
-/** 
-* Create a new string node with the given c-string and its length. 
+/**
+* Create a new string node with the given c-string and its length.
 * NOTE: The string's value will be copied to a newly allocated string
 */
 Node *NewStringNode(const char *s, u_int32_t len);
 
-/** 
+/**
 * Create a new string node from a NULL terminated c-string. #ifdef 0
 * NOTE: The string's value will be copied to a newly allocated string
 */
@@ -109,7 +109,7 @@ Node *NewCStringNode(const char *su);
 * to a Node as value.
 * NOTE: The string's value will be copied to a newly allocated string
 */
-Node *NewKeyValNode(const char *key, u_int32_t len, Node* n);
+Node *NewKeyValNode(const char *key, u_int32_t len, Node *n);
 
 /** Create a new zero length array node with the given capacity */
 Node *NewArrayNode(u_int32_t cap);
@@ -123,35 +123,42 @@ void Node_Free(Node *n);
 /** Pretty-pring a node. Not JSON compliant but will produce something almost JSON-ish */
 void Node_Print(Node *n, int depth);
 
-/** Append a node to an array node. If needed the array's internal list of children will be resized */ 
+/** Append a node to an array node. If needed the array's internal list of children will be resized
+ */
 int Node_ArrayAppend(Node *arr, Node *n);
 
-/** 
-* Set an array's member at a given index to a new node. 
-* If the index is out of range, we will return an error 
+/**
+* Set an array's member at a given index to a new node.
+* If the index is out of range, we will return an error
 */
 int Node_ArraySet(Node *arr, int index, Node *n);
 
-/** 
+/**
 * Retrieve an array item into Node n's pointer by index
-* Returns OBJ_ERR if the index is outof range 
+* Returns OBJ_ERR if the index is outof range
 */
 int Node_ArrayItem(Node *arr, int index, Node **n);
 
 /**
-* Set an item in a dictionary for a given key. 
-* If an existing item is at the key, we replace it and free the old value 
+* Set an item in a dictionary for a given key.
+* If an existing item is at the key, we replace it and free the old value
 */
 int Node_DictSet(Node *obj, const char *key, Node *n);
 
 /**
-* Delete an item from the dict node by key. Returns OBJ_ERR if the key was 
-* not found 
+* Set a keyval node in a dictionary.
+* If an existing node has the same key, we replace it and free the old keyval node
+*/
+int Node_DictSetKeyVal(Node *obj, Node *kv);
+
+/**
+* Delete an item from the dict node by key. Returns OBJ_ERR if the key was
+* not found
 */
 int Node_DictDel(Node *objm, const char *key);
 
 /**
-* Get a dict node item by key, and put it Node val's pointer. 
+* Get a dict node item by key, and put it Node val's pointer.
 * Return OBJ_ERR if the key was not found. Can put NULL into val
 * if it is a NULL node
 */
@@ -162,8 +169,8 @@ typedef void (*NodeVisitor)(Node *, void *);
 void __objTraverse(Node *n, NodeVisitor f, void *ctx);
 void __arrTraverse(Node *n, NodeVisitor f, void *ctx);
 
-/** 
-* Traverse a node recursively with a visitor callback. 
+/**
+* Traverse a node recursively with a visitor callback.
 * We will pass the provided ctx to the callback
 */
 void Node_Traverse(Node *n, NodeVisitor f, void *ctx);

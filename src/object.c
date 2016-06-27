@@ -37,9 +37,9 @@ Node *NewStringNode(const char *s, u_int32_t len) {
 
 Node *NewCStringNode(const char *s) { return NewStringNode(s, strlen(s)); }
 
-Node *NewKeyValNode(const char *key, u_int32_t len, Node* n) {
+Node *NewKeyValNode(const char *key, u_int32_t len, Node *n) {
     Node *ret = __newNode(N_KEYVAL);
-    ret->value.kvval.key = strndup(key,len);
+    ret->value.kvval.key = strndup(key, len);
     ret->value.kvval.val = n;
     return ret;
 }
@@ -153,6 +153,7 @@ Node *__obj_find(t_dict *o, const char *key, int *idx) {
 
     return NULL;
 }
+
 int Node_DictSet(Node *obj, const char *key, Node *n) {
     t_dict *o = &obj->value.dictval;
 
@@ -177,6 +178,34 @@ int Node_DictSet(Node *obj, const char *key, Node *n) {
 
     // TODO: shouldn't key names also be non-null-terminated strings?
     o->entries[o->len++] = NewKeyValNode(key, strlen(key), n);
+
+    return OBJ_OK;
+}
+
+int Node_DictSetKeyVal(Node *obj, Node *kv) {
+    t_dict *o = &obj->value.dictval;
+
+    if (kv->value.kvval.key == NULL) return OBJ_ERR;
+
+    int idx;
+    Node *_kv = __obj_find(o, kv->value.kvval.key, &idx);
+    // first find a replacement possiblity
+    if (_kv) {
+        o->entries[idx] = kv;
+        Node_Free(_kv);
+        return OBJ_OK;
+    }
+
+    // append another entry
+    if (o->len >= o->cap) {
+        o->cap = o->cap ? MIN(o->cap * 2, 1024 * 1024) : 1;
+        o->entries = realloc(o->entries, o->cap * sizeof(t_keyval *));
+        // @Dvir: I think the above is correct (sizeof(t_keyval *)) and needs to merged up
+        // + maybe move the append to _obj_growdict or something?
+        // ++ does this need to be added to unit test?
+    }
+
+    o->entries[o->len++] = kv;
 
     return OBJ_OK;
 }
