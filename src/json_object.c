@@ -220,10 +220,11 @@ static char *indent(JsonBuilder *b) {
         str = ensure(b, b->indentlen * b->depth + 1);
         if (str) {
             for (int i = 0; i < b->depth; i++) {
-                sprintf(str, "%s", b->indentstr);
+                memcpy(str,b->indentstr,b->indentlen);
                 str = str + b->indentlen;
             }
         }
+        str[0] = '\0';
         b->len = update(b);
     } else {
         str = ensure(b, 0);
