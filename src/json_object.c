@@ -29,7 +29,7 @@ typedef struct {
 #define _popNode(joctx) joctx->nodes[--joctx->len]
 
 /* Decalre it. */
-static int is_allowed_whitespace(unsigned c);
+static int IsAllowedWhitespace(unsigned c);
 
 void pushCallback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *state,
                   const jsonsl_char_t *at) {
@@ -114,7 +114,7 @@ int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err) {
     int is_literal = 0;
 
     // munch any leading whitespaces
-    while (is_allowed_whitespace(_buf[_off]) && _off < _len) _off++;
+    while (IsAllowedWhitespace(_buf[_off]) && _off < _len) _off++;
 
     /* Embed literals in a list (also avoids JSONSL_ERROR_STRING_OUTSIDE_CONTAINER).
      * Copying is necc. evil to avoid messing w/ non-standard string implementations (e.g. sds), but
@@ -420,4 +420,4 @@ static int Allowed_Whitespace[0x100] = {
     0,                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 /* 0xfe */
 };
 
-static int is_allowed_whitespace(unsigned c) { return c == ' ' || Allowed_Whitespace[c & 0xff]; }
+static int IsAllowedWhitespace(unsigned c) { return c == ' ' || Allowed_Whitespace[c & 0xff]; }
