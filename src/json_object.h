@@ -7,6 +7,8 @@
 #define JSONOBJECT_OK 0
 #define JSONOBJECT_ERROR 1
 
+#define JSONOBJECT_MAX_ERROR_STRING_LENGTH 128
+
 /**
 * Parses a JSON stored in `buf` of size `len` and creates an object.
 * The resulting object tree is stored in `node` and in case of error the optional `err` is set with

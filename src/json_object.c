@@ -25,7 +25,7 @@ typedef struct {
     int len;       // length of nodes array
 } JsonObjectContext;
 
-#define _pushNode(joctx,n) joctx->nodes[joctx->len++] = n 
+#define _pushNode(joctx, n) joctx->nodes[joctx->len++] = n
 #define _popNode(joctx) joctx->nodes[--joctx->len]
 
 /* Decalre it. */
@@ -157,12 +157,16 @@ int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err) {
         }
     } else {
         if (err) {
+            *err = calloc(JSONOBJECT_MAX_ERROR_STRING_LENGTH, sizeof(char));
             if (JO_ERROR_JSL == joctx->error_type) {
-                sprintf(*err, "ERR JSON lexer error: %s", jsonsl_strerror(joctx->error.jsl));
+                snprintf(*err, JSONOBJECT_MAX_ERROR_STRING_LENGTH, "ERR JSON lexer error: %s",
+                         jsonsl_strerror(joctx->error.jsl));
             } else if (JO_ERROR_OBJ == joctx->error_type) {
-                sprintf(*err, "ERR Object error: %d", joctx->error.obj);
+                snprintf(*err, JSONOBJECT_MAX_ERROR_STRING_LENGTH, "ERR Object error: %d",
+                         joctx->error.obj);
             } else {
-                sprintf(*err, "ERR JSONObject object error: %d", joctx->error.jo);
+                snprintf(*err, JSONOBJECT_MAX_ERROR_STRING_LENGTH,
+                         "ERR JSONObject object error: %d", joctx->error.jo);
             }
         }
     }
@@ -220,7 +224,7 @@ static char *indent(JsonBuilder *b) {
         str = ensure(b, b->indentlen * b->depth + 1);
         if (str) {
             for (int i = 0; i < b->depth; i++) {
-                memcpy(str,b->indentstr,b->indentlen);
+                memcpy(str, b->indentstr, b->indentlen);
                 str = str + b->indentlen;
             }
         }
