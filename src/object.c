@@ -154,6 +154,13 @@ Node *__obj_find(t_dict *o, const char *key, int *idx) {
     return NULL;
 }
 
+#define __obj_insert(o, n)                                             \
+    if (o->len >= o->cap) {                                            \
+        o->cap = o->cap ? MIN(o->cap * 2, 1024 * 1024) : 1;            \
+        o->entries = realloc(o->entries, o->cap * sizeof(t_keyval *)); \
+    }                                                                  \
+    o->entries[o->len++] = n;
+
 int Node_DictSet(Node *obj, const char *key, Node *n) {
     t_dict *o = &obj->value.dictval;
 
@@ -171,13 +178,7 @@ int Node_DictSet(Node *obj, const char *key, Node *n) {
     }
 
     // append another entry
-    if (o->len >= o->cap) {
-        o->cap = o->cap ? MIN(o->cap * 2, 1024 * 1024) : 1;
-        o->entries = realloc(o->entries, o->cap * sizeof(t_keyval));
-    }
-
-    // TODO: shouldn't key names also be non-null-terminated strings?
-    o->entries[o->len++] = NewKeyValNode(key, strlen(key), n);
+    __obj_insert(o, NewKeyValNode(key, strlen(key), n));
 
     return OBJ_OK;
 }
@@ -197,15 +198,7 @@ int Node_DictSetKeyVal(Node *obj, Node *kv) {
     }
 
     // append another entry
-    if (o->len >= o->cap) {
-        o->cap = o->cap ? MIN(o->cap * 2, 1024 * 1024) : 1;
-        o->entries = realloc(o->entries, o->cap * sizeof(t_keyval *));
-        // @Dvir: I think the above is correct (sizeof(t_keyval *)) and needs to merged up
-        // + maybe move the append to _obj_growdict or something?
-        // ++ does this need to be added to unit test?
-    }
-
-    o->entries[o->len++] = kv;
+    __obj_insert(o, kv);
 
     return OBJ_OK;
 }

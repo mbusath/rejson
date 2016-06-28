@@ -25,11 +25,8 @@ typedef struct {
     int len;       // length of nodes array
 } JsonObjectContext;
 
-void _pushNode(JsonObjectContext *joctx, Node *n) { joctx->nodes[joctx->len++] = n; }
-Node *_popNode(JsonObjectContext *joctx) { return joctx->nodes[--joctx->len]; }
-void _rollupNode(JsonObjectContext *joctx) {
-    // NOTE: rhe caller is responsible for a sane stack of sufficient length
-}
+#define _pushNode(joctx,n) joctx->nodes[joctx->len++] = n 
+#define _popNode(joctx) joctx->nodes[--joctx->len]
 
 /* Decalre it. */
 static int is_allowed_whitespace(unsigned c);
