@@ -7,7 +7,7 @@
 #define JSONOBJECT_OK 0
 #define JSONOBJECT_ERROR 1
 
-#define JSONOBJECT_MAX_ERROR_STRING_LENGTH 128
+#define JSONOBJECT_MAX_ERROR_STRING_LENGTH 256
 
 /**
 * Parses a JSON stored in `buf` of size `len` and creates an object.

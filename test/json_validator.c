@@ -27,7 +27,7 @@ int main(int argc, char **argv) {
 
     if (ret || err) {
         ret = 1;
-        printf("-ERR %s\n", err ? err : "unknown");
+        printf("-%s\n", err ? err : "ERR unknown");
     } else {
         printf("+OK\n");
     }

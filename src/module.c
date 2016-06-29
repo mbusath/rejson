@@ -122,7 +122,7 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     if (!(JSONOBJECT_OK == CreateNodeFromJSON(json, jsonlen, &jo, &err))) {
         if (err) {
             RedisModule_ReplyWithError(ctx, err);
-            free(err);
+            RedisModule_Free(err);
         } else {
             RedisModule_ReplyWithError(ctx, REJSON_ERROR_JSONOBJECT_ERROR);
         }

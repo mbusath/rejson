@@ -11,18 +11,12 @@
 */
 
 /* === Parser === */
-typedef enum { JO_ERROR_OK, JO_ERROR_JSL, JO_ERROR_OBJ, JO_ERROR_JO } JsonObjectError;
-
 /* A custom context for the JSON lexer. */
 typedef struct {
-    JsonObjectError error_type;  // type of error, if any
-    union {
-        jsonsl_error_t jsl;
-        int obj;
-        int jo;
-    } error;       // error value
-    Node **nodes;  // private stack of created nodes
-    int len;       // length of nodes array
+    jsonsl_error_t err;  // lexer error
+    size_t errpos;       // error position
+    Node **nodes;        // private stack of created nodes
+    int len;             // length of nodes array
 } JsonObjectContext;
 
 #define _pushNode(joctx, n) joctx->nodes[joctx->len++] = n
@@ -100,8 +94,8 @@ void popCallback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *s
 int errorCallback(jsonsl_t jsn, jsonsl_error_t err, struct jsonsl_state_st *state, char *errat) {
     JsonObjectContext *joctx = (JsonObjectContext *)jsn->data;
 
-    joctx->error_type = JO_ERROR_JSL;
-    joctx->error.jsl = err;
+    joctx->err = err;
+    joctx->errpos = state->pos_cur;
     jsonsl_stop(jsn);
     return 0;
 }
@@ -138,7 +132,6 @@ int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err) {
     /* Set up our custom context. */
     JsonObjectContext *joctx = calloc(1, sizeof(JsonObjectContext));
     joctx->nodes = calloc(levels, sizeof(Node *));
-    joctx->error_type = JO_ERROR_OK;
     jsn->data = joctx;
 
     /* Feed the lexer. */
@@ -146,7 +139,7 @@ int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err) {
 
     /* Finalize. */
     int error = 0;
-    if (JO_ERROR_OK == joctx->error_type) {
+    if (JSONSL_ERROR_SUCCESS == joctx->err) {
         /* Extract the literal and discard the list. */
         if (is_literal) {
             Node_ArrayItem(joctx->nodes[0], 0, node);
@@ -160,16 +153,9 @@ int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err) {
         error = 1;
         if (err) {
             *err = calloc(JSONOBJECT_MAX_ERROR_STRING_LENGTH, sizeof(char));
-            if (JO_ERROR_JSL == joctx->error_type) {
-                snprintf(*err, JSONOBJECT_MAX_ERROR_STRING_LENGTH, "ERR JSON lexer error: %s",
-                         jsonsl_strerror(joctx->error.jsl));
-            } else if (JO_ERROR_OBJ == joctx->error_type) {
-                snprintf(*err, JSONOBJECT_MAX_ERROR_STRING_LENGTH, "ERR Object error: %d",
-                         joctx->error.obj);
-            } else {
-                snprintf(*err, JSONOBJECT_MAX_ERROR_STRING_LENGTH,
-                         "ERR JSONObject object error: %d", joctx->error.jo);
-            }
+            snprintf(*err, JSONOBJECT_MAX_ERROR_STRING_LENGTH,
+                     "JSON lexer error at position %zd: %s", joctx->errpos + 1,
+                     jsonsl_strerror(joctx->err));
         }
     }
 
