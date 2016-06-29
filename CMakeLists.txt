@@ -22,6 +22,11 @@ add_executable(test_json_object test/test_json_object.c src/json_object.c src/js
 target_link_libraries(test_json_object m)
 add_test(test_json_object test_json_object)
 
+add_executable(json_validator test/json_validator.c src/json_object.c src/jsonsl.c src/object.c src/rmalloc.c)
+target_link_libraries(json_validator m)
+add_test(NAME valid_json_files COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test/json-validatortron.sh valid 0)
+add_test(NAME invalid_json_files COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test/json-validatortron.sh invalid 1)
+
 add_library(rejson SHARED src/module.c src/json_object.c src/jsonsl.c src/object.c src/path.c src/json_path.c src/rmalloc.c)
 target_compile_definitions(rejson PUBLIC IS_REDIS_MODULE)
 target_link_libraries(rejson m)

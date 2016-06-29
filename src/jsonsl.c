@@ -482,6 +482,9 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
              */
             CONTINUE_NEXT_CHAR();
         } else if (extract_special(CUR_CHAR)) {
+            // if (jsn->expecting && CUR_CHAR != jsn->expecting) {
+            //     INVOKE_ERROR(STRAY_TOKEN);
+            // }
             /* not a string, whitespace, or structural token. must be special */
             goto GT_SPECIAL_BEGIN;
         }

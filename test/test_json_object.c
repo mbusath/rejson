@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <string.h>
+#include <dirent.h>
 #include "minunit.h"
 #include "../src/json_object.h"
 
@@ -344,7 +345,6 @@ MU_TEST_SUITE(test_json_literals) {
 
 MU_TEST_SUITE(test_json_object) {
     MU_RUN_TEST(test_jo_create_object);
-    // TODO: feed valid and invalid json files
 }
 
 MU_TEST_SUITE(test_object_to_json) {

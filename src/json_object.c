@@ -145,6 +145,7 @@ int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err) {
     jsonsl_feed(jsn, _buf, _len);
 
     /* Finalize. */
+    int error = 0;
     if (JO_ERROR_OK == joctx->error_type) {
         /* Extract the literal and discard the list. */
         if (is_literal) {
@@ -156,6 +157,7 @@ int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err) {
             *node = _popNode(joctx);
         }
     } else {
+        error = 1;
         if (err) {
             *err = calloc(JSONOBJECT_MAX_ERROR_STRING_LENGTH, sizeof(char));
             if (JO_ERROR_JSL == joctx->error_type) {
@@ -175,7 +177,7 @@ int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err) {
     free(joctx);
     jsonsl_destroy(jsn);
 
-    return JSONOBJECT_OK;
+    return error ? JSONOBJECT_ERROR : JSONOBJECT_OK;
 }
 
 /* === Serializer === */
