@@ -22,7 +22,7 @@
 */
 
 #ifndef IS_REDIS_MODULE
-#error "rejson must be compiled as a Redis module"
+#pragma GCC error "rejson must be compiled as a Redis module"
 #endif
 
 #include "redismodule.h"
