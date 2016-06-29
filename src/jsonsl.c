@@ -482,9 +482,6 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
              */
             CONTINUE_NEXT_CHAR();
         } else if (extract_special(CUR_CHAR)) {
-            // if (jsn->expecting && CUR_CHAR != jsn->expecting) {
-            //     INVOKE_ERROR(STRAY_TOKEN);
-            // }
             /* not a string, whitespace, or structural token. must be special */
             goto GT_SPECIAL_BEGIN;
         }
@@ -533,6 +530,9 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
                 CONTINUE_NEXT_CHAR();
 
             case JSONSL_T_LIST:
+                if (jsn->expecting == ',') {
+                    INVOKE_ERROR(MISSING_COMMA);
+                }
                 state->nelem++;
                 STACK_PUSH;
                 state->type = JSONSL_T_STRING;
@@ -665,6 +665,9 @@ jsonsl_feed(jsonsl_t jsn, const jsonsl_char_t *bytes, size_t nbytes)
              * we are not doing full numerical/value decoding anyway (but only hinting),
              * we only check upon entry.
              */
+            if (jsn->expecting == ',') {
+                INVOKE_ERROR(MISSING_COMMA);
+            }
             if (state->type != JSONSL_T_SPECIAL) {
                 int special_flags = extract_special(CUR_CHAR);
                 if (!special_flags) {
