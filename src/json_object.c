@@ -3,6 +3,7 @@
 #include "jsonsl.h"
 #include <float.h>
 #include <math.h>
+#include "../deps/rmutil/sds.h"
 #include "rmalloc.h"
 /* Open issues:
 - string serialization
@@ -15,12 +16,12 @@
 typedef struct {
     jsonsl_error_t err;  // lexer error
     size_t errpos;       // error position
-    Node **nodes;        // private stack of created nodes
-    int len;             // length of nodes array
+    Node **nodes;        // stack of created nodes
+    int nlen;            // size of node stack
 } JsonObjectContext;
 
-#define _pushNode(joctx, n) joctx->nodes[joctx->len++] = n
-#define _popNode(joctx) joctx->nodes[--joctx->len]
+#define _pushNode(ctx, n) ctx->nodes[ctx->nlen++] = n
+#define _popNode(ctx) ctx->nodes[--ctx->nlen]
 
 /* Decalre it. */
 static int IsAllowedWhitespace(unsigned c);
@@ -72,18 +73,18 @@ void popCallback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *s
     // Basically anything that pops from the JSON lexer needs to be set in its parent, except
     // 1. The root element (i.e. end of JSON)
     // 2. Hashkeys are postponed until their values are popped (resulting in a double-pop, a.k.a DP)
-    if (joctx->len > 1 && state->type != JSONSL_T_HKEY) {
-        NodeType p = joctx->nodes[joctx->len - 2]->type;
+    if (joctx->nlen > 1 && state->type != JSONSL_T_HKEY) {
+        NodeType p = joctx->nodes[joctx->nlen - 2]->type;
         switch (p) {
             case N_DICT:
-                Node_DictSetKeyVal(joctx->nodes[joctx->len - 1], _popNode(joctx));
+                Node_DictSetKeyVal(joctx->nodes[joctx->nlen - 1], _popNode(joctx));
                 break;
             case N_ARRAY:
-                Node_ArrayAppend(joctx->nodes[joctx->len - 1], _popNode(joctx));
+                Node_ArrayAppend(joctx->nodes[joctx->nlen - 1], _popNode(joctx));
                 break;
             case N_KEYVAL:
-                joctx->nodes[joctx->len - 2]->value.kvval.val = _popNode(joctx);
-                Node_DictSetKeyVal(joctx->nodes[joctx->len - 1], _popNode(joctx));
+                joctx->nodes[joctx->nlen - 2]->value.kvval.val = _popNode(joctx);
+                Node_DictSetKeyVal(joctx->nodes[joctx->nlen - 1], _popNode(joctx));
                 break;
             default:
                 break;
@@ -167,6 +168,7 @@ int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err) {
 }
 
 /* === Serializer === */
+
 typedef struct {
     size_t len;               // buffer length
     size_t cap;               // buffer capacity
