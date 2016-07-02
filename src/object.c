@@ -2,6 +2,7 @@
 #include <sys/param.h>
 #include <string.h>
 #include <stdio.h>
+#include "../deps/rmutil/vector.h"
 #include "rmalloc.h"
 
 Node *__newNode(NodeType t) {
@@ -331,4 +332,96 @@ void Node_Print(Node *n, int depth) {
         case N_STRING:
             printf("\"%.*s\"", n->value.strval.len, n->value.strval.data);
     }
+}
+
+// serializer stack
+typedef struct {
+    int level;      // current level
+    int pos;        // 0-based level
+    Vector *nodes;
+    Vector *indices;
+
+} t_serializer_stack;
+
+// Pops a vector's last element (no resizing though)
+// TODO: maybe move to vector.h?
+void *Vector_Pop(Vector *v) {
+    void *ret = NULL;
+    if (v->top) {
+        Vector_Get(v, v->top - 1, &ret);
+        v->top--;
+    }
+    return ret;
+}
+
+// serializer stack push
+void _serializerPush(t_serializer_stack *s, const Node *n) {
+    s->level++;
+    Vector_Push(s->nodes, n);
+    Vector_Push(s->indices, 0);
+}
+
+// serializer stack push
+void _serializerPop(t_serializer_stack *s) {
+    s->level--;
+    Vector_Pop(s->nodes);
+    Vector_Pop(s->indices);
+}
+
+void Node_Serializer(const Node *n, const NodeSerializerOpt *o, void *ctx) {
+    Node *curr_node;
+    int curr_len;
+    int curr_index;
+    Node **curr_entries;
+
+    t_serializer_stack s = {0};
+    s.nodes = NewVector(Node *, 0);
+    s.indices = NewVector(int, 0);
+
+    _serializerPush(&s, n);
+    
+NODE_BEGIN:
+    Vector_Get(s.nodes, s.level - 1, &curr_node);
+    o->fBegin(curr_node, ctx);
+    // NULL nodes need special care
+    if (!curr_node) goto NODE_END;
+
+NODE_CONTINUE:
+    // Only containers require further fondling, the rest fall through
+    if (N_DICT == curr_node->type) {
+        curr_len = curr_node->value.dictval.len;
+        curr_entries = curr_node->value.dictval.entries;
+        goto CONTAINER;
+    } else if (N_ARRAY == curr_node->type) {
+        curr_len = curr_node->value.arrval.len;
+        curr_entries = curr_node->value.arrval.entries;
+        goto CONTAINER;
+    } else if (N_KEYVAL == curr_node->type) {
+        curr_len = 1;
+        curr_entries = &curr_node->value.kvval.val;
+        goto CONTAINER;
+    }
+    // Others go to the end
+    goto NODE_END;
+
+CONTAINER:
+    Vector_Get(s.indices, s.level - 1, &curr_index);
+    if (curr_index < curr_len) {
+        if (curr_index) o->fDelim(ctx);
+        Vector_Put(s.indices, s.level - 1, curr_index + 1);
+        _serializerPush(&s, curr_entries[curr_index]);
+        goto NODE_BEGIN;
+    }
+
+NODE_END:
+    o->fEnd(curr_node, ctx);
+    _serializerPop(&s);
+    if (s.level) {
+        Vector_Get(s.nodes, s.level - 1, &curr_node);
+        goto NODE_CONTINUE;
+    }
+
+SERIALIZER_END:
+    Vector_Free(s.nodes);
+    Vector_Free(s.indices);
 }

@@ -18,7 +18,7 @@ typedef enum {
     N_BOOLEAN,
     N_DICT,
     N_ARRAY,
-    N_KEYVAL,
+    N_KEYVAL
 } NodeType;
 
 struct t_node;
@@ -174,5 +174,23 @@ void __arrTraverse(Node *n, NodeVisitor f, void *ctx);
 * We will pass the provided ctx to the callback
 */
 void Node_Traverse(Node *n, NodeVisitor f, void *ctx);
+
+/* The type signature of serializer callbacks for node trees */
+typedef void (*NodeSerializerValue)(Node *, void *);
+typedef void (*NodeSerializerContainer)(void *);
+
+/* The options container for the serializer */
+typedef struct {
+    NodeSerializerValue fBegin;      // begin node serializer callback
+    NodeSerializerValue fEnd;        // end node serializer callback
+    NodeSerializerContainer fDelim;  // container node delimiter callback
+    // TODO: callback type flags?
+} NodeSerializerOpt;
+
+/**
+* Scan a node without recursion but with callbacks.
+* We will pass the provided ctx to the callback
+*/
+void Node_Serializer(const Node *n, const NodeSerializerOpt *o, void *ctx);
 
 #endif
