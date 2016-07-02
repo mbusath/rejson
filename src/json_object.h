@@ -3,6 +3,7 @@
 
 #include <stdlib.h>
 #include "object.h"
+#include "../deps/rmutil/sds.h"
 
 #define JSONOBJECT_OK 0
 #define JSONOBJECT_ERROR 1
@@ -19,10 +20,15 @@
 */
 int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err);
 
+typedef struct {
+    char *indentstr;   // indentation string
+    char *newlinestr;  // linebreak string
+    char *spacestr;    // spacing before/after element in size=1 containers, and after keys
+} JSONSerializeOpt;
+
 /**
 * Produces a JSON serialization from an object.
 */
-int SerializeNodeToJSON(const Node *node, const char *indentstr, const char *kvindentstr,
-                        const char *newlinestr, char **json);
+void SerializeNodeToJSON(const Node *node, const JSONSerializeOpt *opt, sds *json);
 
 #endif

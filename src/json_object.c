@@ -1,9 +1,7 @@
 #include "json_object.h"
-#include "object.h"
 #include "jsonsl.h"
 #include <float.h>
 #include <math.h>
-#include "../deps/rmutil/sds.h"
 #include "rmalloc.h"
 /* Open issues:
 - string serialization
@@ -24,7 +22,7 @@ typedef struct {
 #define _popNode(ctx) ctx->nodes[--ctx->nlen]
 
 /* Decalre it. */
-static int IsAllowedWhitespace(unsigned c);
+static int _IsAllowedWhitespace(unsigned c);
 
 void pushCallback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *state,
                   const jsonsl_char_t *at) {
@@ -109,7 +107,7 @@ int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err) {
     int is_literal = 0;
 
     // munch any leading whitespaces
-    while (IsAllowedWhitespace(_buf[_off]) && _off < _len) _off++;
+    while (_IsAllowedWhitespace(_buf[_off]) && _off < _len) _off++;
 
     /* Embed literals in a list (also avoids JSONSL_ERROR_STRING_OUTSIDE_CONTAINER).
      * Copying is necc. evil to avoid messing w/ non-standard string implementations (e.g. sds), but
@@ -167,230 +165,148 @@ int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err) {
     return error ? JSONOBJECT_ERROR : JSONOBJECT_OK;
 }
 
-/* === Serializer === */
+/* === JSON serializer === */
 
 typedef struct {
-    size_t len;               // buffer length
-    size_t cap;               // buffer capacity
-    char *buf;                // buffer
-    int depth;                // current depth
-    int inkey;                // currently printing a hash key
-    const char *indentstr;    // indentation string
-    size_t indentlen;         // length of indent string
-    const char *kvindentstr;  // indentation string after key
-    size_t kvindentlen;       // length of indent string after key
-    const char *newlinestr;   // linebreak string
-    size_t newlinelen;        // linebreak of indent string
-} JsonBuilder;
+    sds buf;         // serialization buffer
+    int depth;       // current tree depth
+    int indent;      // indentation string length
+    sds indentstr;   // indentaion string
+    sds newlinestr;  // newline string
+    sds spacestr;    // space string
+    sds delimstr;    // delimiter string
+} _JSONBuilderContext;
 
-/* Grows the builder's buffer if needed. */
-static char *ensure(JsonBuilder *b, int needed) {
-    needed += b->len;
-    if (needed <= b->cap) return b->buf + b->len;
+#define _JSONSerialize_Indent(b) \
+    if (b->indent)               \
+        for (int i = 0; i < b->depth; i++) b->buf = sdscatsds(b->buf, b->indentstr);
 
-    if (!b->cap) {  // 64 bytes should be ok for most literals
-        b->cap = 1 << 6;
-    } else if (b->cap < (1 << 16)) {  // otherwise grow by powers of 2 until 65K
-        b->cap = 2 * b->cap;
-    } else {  // then by 65K
-        b->cap = b->cap + (1 << 16);
-    }
-
-    b->buf = realloc(b->buf, b->cap * sizeof(char));
-    return b->buf + b->len;
+void _JSONSerialize_StringValue(Node *n, void *ctx) {
+    _JSONBuilderContext *b = (_JSONBuilderContext *)ctx;
+    sds s = sdsnewlen(n->value.strval.data, n->value.strval.len);
+    // TODO: escapes and shit! check out sdscatrepr
+    b->buf = sdscatfmt(b->buf, "\"%S\"", s);
+    sdsfree(s);
 }
 
-/* Returns the buffer's current length. */
-static int update(JsonBuilder *b) {
-    char *str;
-    str = b->buf + b->len;
-    return b->len + strlen(str);
-}
+void _JSONSerialize_BeginValue(Node *n, void *ctx) {
+    _JSONBuilderContext *b = (_JSONBuilderContext *)ctx;
 
-static char *indent(JsonBuilder *b) {
-    char *str = 0;
-
-    if (b->indentlen) {
-        str = ensure(b, b->indentlen * b->depth + 1);
-        if (str) {
-            for (int i = 0; i < b->depth; i++) {
-                memcpy(str, b->indentstr, b->indentlen);
-                str = str + b->indentlen;
-            }
-        }
-        str[0] = '\0';
-        b->len = update(b);
-    } else {
-        str = ensure(b, 0);
-    }
-    return str;
-}
-
-/* Decalre it. */
-static char *serialize_Node(Node *n, JsonBuilder *b);
-
-static char *serialize_Dict(Node *n, JsonBuilder *b) {
-    char *str = 0;
-
-    str = ensure(b, b->newlinelen + 2);
-    sprintf(str, "%s%s", "{", b->newlinestr);
-    b->len = update(b);
-    b->depth++;
-
-    int len = n->value.dictval.len;
-    if (len) {
-        str = indent(b);
-        str = serialize_Node(n->value.dictval.entries[0], b);
-        if (str && len > 1) {
-            for (int i = 1; i < len; i++) {
-                str = ensure(b, b->newlinelen + 2);
-                sprintf(str, ",%s", b->newlinestr);
-                b->len = update(b);
-                str = indent(b);
-                str = serialize_Node(n->value.dictval.entries[i], b);
-                b->len = update(b);
-            }
-        }
-        str = ensure(b, b->newlinelen + 2);
-        sprintf(str, "%s", b->newlinestr);
-    }
-
-    b->depth--;
-    b->len = update(b);
-    str = indent(b);
-    str = ensure(b, 2);
-    sprintf(str, "}");
-
-    return str;
-}
-
-static char *serialize_Array(Node *n, JsonBuilder *b) {
-    char *str = 0;
-
-    str = ensure(b, b->newlinelen + 2);
-    sprintf(str, "%s%s", "[", b->newlinestr);
-    b->len = update(b);
-    b->depth++;
-
-    int len = n->value.arrval.len;
-    if (len) {
-        str = indent(b);
-        str = serialize_Node(n->value.arrval.entries[0], b);
-        if (len > 1) {
-            for (int i = 1; i < len; i++) {
-                str = ensure(b, b->newlinelen + 2);
-                sprintf(str, ",%s", b->newlinestr);
-                b->len = update(b);
-                str = indent(b);
-                str = serialize_Node(n->value.dictval.entries[i], b);
-                b->len = update(b);
-            }
-        }
-        str = ensure(b, b->newlinelen + 2);
-        if (str) sprintf(str, "%s", b->newlinestr);
-    }
-
-    b->depth--;
-    b->len = update(b);
-    str = indent(b);
-    str = ensure(b, 2);
-    sprintf(str, "]");
-
-    return str;
-}
-
-static char *serialize_String(Node *n, JsonBuilder *b) {
-    char *str = 0;
-
-    // TODO: escapes and shit!
-    str = ensure(b, n->value.strval.len + 3);
-    sprintf(str, "\"%.*s\"", n->value.strval.len, n->value.strval.data);
-
-    return str;
-}
-
-static char *serialize_Node(Node *n, JsonBuilder *b) {
-    char *str = 0;
-
-    if (!n) {
-        str = ensure(b, 5);
-        sprintf(str, "null");
+    if (!n) {  // NULL nodes are literal nulls
+        b->buf = sdscatlen(b->buf, "null", 4);
     } else {
         switch (n->type) {
             case N_BOOLEAN:
                 if (n->value.boolval) {
-                    str = ensure(b, 5);
-                    sprintf(str, "true");
+                    b->buf = sdscatlen(b->buf, "true", 4);
                 } else {
-                    str = ensure(b, 6);
-                    sprintf(str, "false");
+                    b->buf = sdscatlen(b->buf, "false", 5);
                 }
                 break;
             case N_INTEGER:
-                str = ensure(b, 21);  // 19 charachter, sign and null terminator
-                sprintf(str, "%ld", n->value.intval);
+                b->buf = sdscatfmt(b->buf, "%I", n->value.intval);
                 break;
             case N_NUMBER:
-                str = ensure(b, 64);
                 if (fabs(floor(n->value.numval) - n->value.numval) <= DBL_EPSILON &&
                     fabs(n->value.numval) < 1.0e60)
-                    sprintf(str, "%.0f", n->value.numval);
+                    b->buf = sdscatprintf(b->buf, "%.0f", n->value.numval);
                 else if (fabs(n->value.numval) < 1.0e-6 || fabs(n->value.numval) > 1.0e9)
-                    sprintf(str, "%e", n->value.numval);
+                    b->buf = sdscatprintf(b->buf, "%e", n->value.numval);
                 else
-                    sprintf(str, "%f", n->value.numval);
+                    b->buf = sdscatprintf(b->buf, "%f", n->value.numval);
                 break;
             case N_STRING:
-                str = serialize_String(n, b);
+                _JSONSerialize_StringValue(n, b);
                 break;
             case N_KEYVAL:
-                str = ensure(b, strlen(n->value.kvval.key) + b->kvindentlen + 4);
-                sprintf(str, "\"%s\":%s", n->value.kvval.key, b->kvindentstr);
-                b->len = update(b);
-                b->inkey = 1;
-                str = serialize_Node(n->value.kvval.val, b);
-                b->inkey = 0;
+                b->buf = sdscatfmt(b->buf, "\"%s\":%s", n->value.kvval.key, b->spacestr);
                 break;
             case N_DICT:
-                if (!b->inkey) str = indent(b);
-                b->inkey = 0;
-                str = serialize_Dict(n, b);
+                b->buf = sdscatlen(b->buf, "{", 1);
+                b->depth++;
+                if (n->value.dictval.len) {
+                    b->buf = sdscatsds(b->buf, b->newlinestr);
+                    _JSONSerialize_Indent(b);
+                }
                 break;
             case N_ARRAY:
-                if (!b->inkey) str = indent(b);
-                b->inkey = 0;
-                str = serialize_Array(n, b);
+                b->buf = sdscatlen(b->buf, "[", 1);
+                b->depth++;
+                if (n->value.arrval.len) {
+                    b->buf = sdscatsds(b->buf, b->newlinestr);
+                    _JSONSerialize_Indent(b);
+                }
                 break;
         }  // switch(n->type)
     }
-    b->len = update(b);
-    return str;
 }
 
-int SerializeNodeToJSON(const Node *node, const char *indentstr, const char *kvindentstr,
-                        const char *newlinestr, char **json) {
+void _JSONSerialize_EndValue(Node *n, void *ctx) {
+    _JSONBuilderContext *b = (_JSONBuilderContext *)ctx;
+    if (n) {
+        switch (n->type) {
+            case N_DICT:
+                if (n->value.dictval.len) {
+                    b->buf = sdscatsds(b->buf, b->newlinestr);
+                }
+                b->depth--;
+                _JSONSerialize_Indent(b);
+                b->buf = sdscatlen(b->buf, "}", 1);
+                break;
+            case N_ARRAY:
+                if (n->value.arrval.len) {
+                    b->buf = sdscatsds(b->buf, b->newlinestr);
+                }
+                b->depth--;
+                _JSONSerialize_Indent(b);
+                b->buf = sdscatlen(b->buf, "]", 1);
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+void _JSONSerialize_ContainerDelimiter(void *ctx) {
+    _JSONBuilderContext *b = (_JSONBuilderContext *)ctx;
+    b->buf = sdscat(b->buf, b->delimstr);
+    _JSONSerialize_Indent(b);
+}
+
+void SerializeNodeToJSON(const Node *node, const JSONSerializeOpt *opt, sds *json) {
+    int levels = JSONSL_MAX_LEVELS;
+
     // set up the builder
-    JsonBuilder b = {0};
-    b.indentstr = indentstr ? indentstr : "";
-    b.kvindentstr = kvindentstr ? kvindentstr : "";
-    b.newlinestr = newlinestr ? newlinestr : "";
-    b.indentlen = strlen(b.indentstr);
-    b.kvindentlen = strlen(b.kvindentstr);
-    b.newlinelen = strlen(b.newlinestr);
+    _JSONBuilderContext *b = calloc(1, sizeof(_JSONBuilderContext));
+    b->indentstr = opt->indentstr ? sdsnew(opt->indentstr) : sdsempty();
+    b->newlinestr = opt->newlinestr ? sdsnew(opt->newlinestr) : sdsempty();
+    b->spacestr = opt->spacestr ? sdsnew(opt->spacestr) : sdsempty();
+    b->indent = sdslen(b->indentstr);
+    b->delimstr = sdsnewlen(",",1);
+    b->delimstr = sdscat(b->delimstr, b->newlinestr);
+    b->buf = sdsempty();
 
     // the real work
-    serialize_Node((Node *)node, &b);
-    if (!b.len) return JSONOBJECT_ERROR;
+    NodeSerializerOpt nso;
+    nso.fBegin = _JSONSerialize_BeginValue;
+    nso.fEnd = _JSONSerialize_EndValue;
+    nso.fDelim = _JSONSerialize_ContainerDelimiter;
+    Node_Serializer(node, &nso, b);
 
-    *json = b.buf;
-    return JSONOBJECT_OK;
+    *json = b->buf;
+
+    sdsfree(b->indentstr);
+    sdsfree(b->newlinestr);
+    sdsfree(b->spacestr);
+    sdsfree(b->delimstr);
+    free(b);
 }
 
 // from jsonsl.c
 /**
  * This table contains entries for the allowed whitespace as per RFC 4627
  */
-static int Allowed_Whitespace[0x100] = {
+static int _AllowedWhitespace[0x100] = {
     /* 0x00 */ 0,             0, 0, 0, 0, 0, 0, 0, 0,                            /* 0x08 */
     /* 0x09 */ 1 /* <TAB> */,                                                    /* 0x09 */
     /* 0x0a */ 1 /* <LF> */,                                                     /* 0x0a */
@@ -414,4 +330,4 @@ static int Allowed_Whitespace[0x100] = {
     0,                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 /* 0xfe */
 };
 
-static int IsAllowedWhitespace(unsigned c) { return c == ' ' || Allowed_Whitespace[c & 0xff]; }
+static int _IsAllowedWhitespace(unsigned c) { return c == ' ' || _AllowedWhitespace[c & 0xff]; }

@@ -30,6 +30,7 @@
 #include "json_object.h"
 #include "json_path.h"
 // #include "../deps/rmutil/util.h"
+#include "../deps/rmutil/sds.h"
 #include <string.h>
 
 #define JSONTYPE_ENCODING_VERSION 0
@@ -278,16 +279,19 @@ int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     }
 
     // serialize it
-    char *str = NULL;
-    if (JSONOBJECT_OK != SerializeNodeToJSON(objTarget, "\t", " ", "\n", &str)) {
+    sds json = sdsempty();
+    JSONSerializeOpt opt = { "\t", "\n", " "};
+    SerializeNodeToJSON(objTarget, &opt, &json);
+    if (!sdslen(json)) {
         RedisModule_ReplyWithError(ctx, REJSON_ERROR_SERIALIZE);
         return REDISMODULE_ERR;
     }
 
-    RedisModule_ReplyWithStringBuffer(ctx, str, strlen(str));
+    RedisModule_ReplyWithStringBuffer(ctx, json, sdslen(json));
 
-    RedisModule_Free(str);
+    sdsfree(json);
     SearchPath_Free(&sp);
+
     return REDISMODULE_OK;
 }
 

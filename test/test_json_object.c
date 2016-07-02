@@ -215,120 +215,127 @@ MU_TEST(test_jo_create_object) {
 
 MU_TEST(test_oj_null) {
     Node *n;
-    char *str = NULL;
+    sds str = sdsempty();
+    JSONSerializeOpt opt = {"", "", ""};
 
     n = NULL;
-    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, NULL, NULL, NULL, &str));
+    SerializeNodeToJSON(n, &opt, &str);
     mu_check(str);
     mu_check(0 == strncmp("null", str, strlen(str)));
-    free(str);
+    sdsfree(str);
 }
 
 MU_TEST(test_oj_boolean) {
     Node *n;
-    char *str = NULL;
+    sds str = sdsempty();
+    JSONSerializeOpt opt = {"", "", ""};
 
     n = NewBoolNode(0);
     mu_check(n);
-    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, NULL, NULL, NULL, &str));
+    SerializeNodeToJSON(n, &opt, &str);
     mu_check(str);
     mu_check(0 == strncmp("false", str, strlen(str)));
-    free(str);
+    sdsfree(str);
     Node_Free(n);
 
     n = NewBoolNode(1);
     mu_check(n);
-    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, NULL, NULL, NULL, &str));
+    SerializeNodeToJSON(n, &opt, &str);
     mu_check(str);
     mu_check(0 == strncmp("true", str, strlen(str)));
-    free(str);
+    sdsfree(str);
     Node_Free(n);
 }
 
 MU_TEST(test_oj_integer) {
     Node *n;
-    char *str = NULL;
+    sds str = sdsempty();
+    JSONSerializeOpt opt = {"", "", ""};
 
     n = NewIntNode(0);
     mu_check(n);
-    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, NULL, NULL, NULL, &str));
+    SerializeNodeToJSON(n, &opt, &str);
     mu_check(str);
     mu_check(0 == strncmp("0", str, strlen(str)));
-    free(str);
+    sdsfree(str);
     Node_Free(n);
 
     n = NewIntNode(42);
     mu_check(n);
-    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, NULL, NULL, NULL, &str));
+    SerializeNodeToJSON(n, &opt, &str);
     mu_check(str);
     mu_check(0 == strncmp("42", str, strlen(str)));
-    free(str);
+    sdsfree(str);
     Node_Free(n);
 
     n = NewIntNode(-6379);
     mu_check(n);
-    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, NULL, NULL, NULL, &str));
+    SerializeNodeToJSON(n, &opt, &str);
     mu_check(str);
     mu_check(0 == strncmp("-6379", str, strlen(str)));
-    free(str);
+    sdsfree(str);
     Node_Free(n);
 }
 
 MU_TEST(test_oj_string) {
     Node *n;
-    char *str = NULL;
+    sds str = sdsempty();
+    JSONSerializeOpt opt = {"", "", ""};
 
     n = NewCStringNode("foo");
     mu_check(n);
-    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, NULL, NULL, NULL, &str));
+    SerializeNodeToJSON(n, &opt, &str);
     mu_check(str);
     mu_check(0 == strncmp(_JSTR(foo), str, strlen(str)));
-    free(str);
+    sdsfree(str);
     Node_Free(n);
 }
 
 MU_TEST(test_oj_keyval) {
     Node *n;
-    char *str = NULL;
+    sds str = sdsempty();
+    JSONSerializeOpt opt = {"", "", ""};
     char *json = _JSTR(foo) ":" _JSTR(bar);
 
     n = NewKeyValNode("foo", 3, NewCStringNode("bar"));
     mu_check(n);
-    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, NULL, NULL, NULL, &str));
+    SerializeNodeToJSON(n, &opt, &str);
     mu_check(str);
     mu_check(0 == strncmp(json, str, strlen(str)));
-    free(str);
+    sdsfree(str);
     Node_Free(n);
 }
 
 MU_TEST(test_oj_dict) {
     Node *n;
-    char *str = NULL;
+    sds str = sdsempty();
+    JSONSerializeOpt opt = {"", "", ""};
     char *json = "{" _JSTR(foo) ":" _JSTR(bar) "}";
 
     n = NewDictNode(1);
     mu_check(n);
     mu_check(OBJ_OK == Node_DictSet(n, "foo", NewCStringNode("bar")));
-    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, NULL, NULL, NULL, &str));
+    SerializeNodeToJSON(n, &opt, &str);
     mu_check(str);
     mu_check(0 == strncmp(json, str, strlen(str)));
-    free(str);
+    sdsfree(str);
     Node_Free(n);
 }
 
 MU_TEST(test_oj_array) {
     Node *n;
-    char *str = NULL;
+    sds str = sdsempty();
+    JSONSerializeOpt opt = {"", "", ""};
     char *json = "[" _JSTR(foo) ",42]";
 
     n = NewArrayNode(2);
     mu_check(n);
     mu_check(OBJ_OK == Node_ArrayAppend(n, NewCStringNode("foo")));
     mu_check(OBJ_OK == Node_ArrayAppend(n, NewIntNode(42)));
-    mu_check(JSONOBJECT_OK == SerializeNodeToJSON(n, NULL, NULL, NULL, &str));
+    SerializeNodeToJSON(n, &opt, &str);
     mu_check(str);
     mu_check(0 == strncmp(json, str, strlen(str)));
-    free(str);
+    sdsfree(str);
     Node_Free(n);
 }
 
@@ -343,9 +350,7 @@ MU_TEST_SUITE(test_json_literals) {
     MU_RUN_TEST(test_jo_create_literal_array);
 }
 
-MU_TEST_SUITE(test_json_object) {
-    MU_RUN_TEST(test_jo_create_object);
-}
+MU_TEST_SUITE(test_json_object) { MU_RUN_TEST(test_jo_create_object); }
 
 MU_TEST_SUITE(test_object_to_json) {
     MU_RUN_TEST(test_oj_null);
