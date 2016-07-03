@@ -83,6 +83,7 @@ void JsonTypeFree(void *value) {
 // == Module commands ==
 /* JSON.SET <key> <path> <json> [SCHEMA <schema-key>]
 */
+int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) __attribute__((visibility("default")));
 int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     // check args
     if ((argc < 4) || (argc > 6)) return RedisModule_WrongArity(ctx);
@@ -220,6 +221,7 @@ error:
 * IDENTSTR: string (applies only to PRETTYIFY)
 * BREAKSTR: string (applies only to PRETTYIFY)
 */
+int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) __attribute__((visibility("default")));
 int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if ((argc < 2)) return RedisModule_WrongArity(ctx);
     RedisModule_AutoMemory(ctx);
@@ -296,6 +298,7 @@ int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
 }
 
 /* Unit test entry point for the module. */
+int TestModule(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) __attribute__((visibility("default")));
 int TestModule(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     RedisModule_AutoMemory(ctx);
 
@@ -303,6 +306,7 @@ int TestModule(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     return REDISMODULE_OK;
 }
 
+int RedisModule_OnLoad(RedisModuleCtx *ctx) __attribute__((visibility("default")));
 int RedisModule_OnLoad(RedisModuleCtx *ctx) {
     if (RedisModule_Init(ctx, RLMODULE_NAME, 1, REDISMODULE_APIVER_1) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
