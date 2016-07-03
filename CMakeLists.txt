@@ -46,8 +46,9 @@ add_test(test_json_object test_json_object)
 add_test(NAME valid_json_files COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test/json-validatortron.sh valid 0)
 add_test(NAME invalid_json_files COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test/json-validatortron.sh invalid 1)
 
-add_library(rejson SHARED src/module.c deps/rmutil/sds.c)
+add_library(rejson SHARED src/module.c deps/rmutil/sds.c deps/rmutil/util.c)
 target_compile_definitions(rejson PUBLIC IS_REDIS_MODULE)
+target_include_directories(rejson PUBLIC src)
 target_link_libraries(rejson object json_object m)
 set_target_properties(rejson PROPERTIES PREFIX "" C_VISIBILITY_PRESET hidden LINK_FLAGS "-Bsymbolic")
 

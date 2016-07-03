@@ -29,7 +29,7 @@
 #include "object.h"
 #include "json_object.h"
 #include "json_path.h"
-// #include "../deps/rmutil/util.h"
+#include "../deps/rmutil/util.h"
 #include "../deps/rmutil/sds.h"
 #include <string.h>
 
@@ -83,7 +83,8 @@ void JsonTypeFree(void *value) {
 // == Module commands ==
 /* JSON.SET <key> <path> <json> [SCHEMA <schema-key>]
 */
-int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) __attribute__((visibility("default")));
+int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
+    __attribute__((visibility("default")));
 int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     // check args
     if ((argc < 4) || (argc > 6)) return RedisModule_WrongArity(ctx);
@@ -149,7 +150,7 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     } else {  // if (REDISMODULE_KEYTYPE_EMPTY == type)
         Node *objRoot = RedisModule_ModuleTypeGetValue(key);
         Node *objTarget, *objParent;
-        if (sp.len) {   // anything but the root
+        if (sp.len) {  // anything but the root
             PathError pe = SearchPath_Find(&sp, objRoot, &objTarget);
             if (E_OK != pe) {
                 switch (pe) {
@@ -215,13 +216,15 @@ error:
     return REDISMODULE_ERR;
 }
 
-/* JSON.GET <key> [FORMAT PRETTIFY|MINIFY] [INDENT <indentation-string>] [BREAK <line-break-string>] [<path>]
+/* JSON.GET <key> INDENT <indentation-string>] [NEWLINE <newline-string>] [SPACE
+* <space-string>] [<path>]
 * if path not given, defaults to root
-* FORMAT defaults to prettify
-* IDENTSTR: string (applies only to PRETTYIFY)
-* BREAKSTR: string (applies only to PRETTYIFY)
+* INDENT: indentation string
+* NEWLINE: newline string
+* SPACE: space string
 */
-int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) __attribute__((visibility("default")));
+int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
+    __attribute__((visibility("default")));
 int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if ((argc < 2)) return RedisModule_WrongArity(ctx);
     RedisModule_AutoMemory(ctx);
@@ -237,14 +240,38 @@ int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     }
 
     // check for optional arguments
-    // RMUtil_ParseArgsAfter();
-
+    int pathpos = 2;
+    JSONSerializeOpt jsopt = {0};
+    if (pathpos < argc) {
+        RMUtil_ParseArgsAfter("indent", argv, argc, "c", &jsopt.indentstr);
+        if (jsopt.indentstr) {
+            pathpos += 2;
+        } else {
+            jsopt.indentstr = "";
+        }
+    }
+    if (pathpos < argc) {
+        RMUtil_ParseArgsAfter("newline", argv, argc, "c", &jsopt.newlinestr);
+        if (jsopt.newlinestr) {
+            pathpos += 2;
+        } else {
+            jsopt.newlinestr = "";
+        }
+    }
+    if (pathpos < argc) {
+        RMUtil_ParseArgsAfter("space", argv, argc, "c", &jsopt.spacestr);
+        if (jsopt.spacestr) {
+            pathpos += 2;
+        } else {
+            jsopt.spacestr = "";
+        }
+    }
     // path must be valid, the root path is an exception
     size_t pathlen;
     const char *path;
     SearchPath sp = NewSearchPath(0);
-    if (argc == 3) {
-        path = RedisModule_StringPtrLen(argv[2], &pathlen);
+    if (pathpos < argc) {
+        path = RedisModule_StringPtrLen(argv[pathpos], &pathlen);
         if (strncmp(OBJECT_ROOT_PATH, path, pathlen)) {
             if (PARSE_ERR == ParseJSONPath(path, pathlen, &sp)) {
                 RedisModule_ReplyWithError(ctx, REJSON_ERROR_PARSE_PATH);
@@ -282,8 +309,7 @@ int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
 
     // serialize it
     sds json = sdsempty();
-    JSONSerializeOpt opt = { "\t", "\n", " "};
-    SerializeNodeToJSON(objTarget, &opt, &json);
+    SerializeNodeToJSON(objTarget, &jsopt, &json);
     if (!sdslen(json)) {
         RedisModule_ReplyWithError(ctx, REJSON_ERROR_SERIALIZE);
         return REDISMODULE_ERR;
@@ -298,7 +324,8 @@ int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
 }
 
 /* Unit test entry point for the module. */
-int TestModule(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) __attribute__((visibility("default")));
+int TestModule(RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
+    __attribute__((visibility("default")));
 int TestModule(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     RedisModule_AutoMemory(ctx);
 
