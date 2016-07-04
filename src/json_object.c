@@ -7,6 +7,7 @@
 - string serialization
 - move jsonsl to deps
 - move include files to include
+- consider replacing jsonsl with RapidJSON
 */
 
 /* === Parser === */
@@ -237,6 +238,8 @@ void _JSONSerialize_BeginValue(Node *n, void *ctx) {
                     _JSONSerialize_Indent(b);
                 }
                 break;
+            case N_NULL:  // keeps the compiler from complaining
+                break;
         }  // switch(n->type)
     }
 }
@@ -261,7 +264,7 @@ void _JSONSerialize_EndValue(Node *n, void *ctx) {
                 _JSONSerialize_Indent(b);
                 b->buf = sdscatlen(b->buf, "]", 1);
                 break;
-            default:
+            default:  // keeps the compiler from complaining
                 break;
         }
     }
@@ -282,15 +285,18 @@ void SerializeNodeToJSON(const Node *node, const JSONSerializeOpt *opt, sds *jso
     b->newlinestr = opt->newlinestr ? sdsnew(opt->newlinestr) : sdsempty();
     b->spacestr = opt->spacestr ? sdsnew(opt->spacestr) : sdsempty();
     b->indent = sdslen(b->indentstr);
-    b->delimstr = sdsnewlen(",",1);
+    b->delimstr = sdsnewlen(",", 1);
     b->delimstr = sdscat(b->delimstr, b->newlinestr);
     b->buf = sdsempty();
 
     // the real work
-    NodeSerializerOpt nso;
+    NodeSerializerOpt nso = {0};
     nso.fBegin = _JSONSerialize_BeginValue;
+    nso.xBegin = 0xffff;
     nso.fEnd = _JSONSerialize_EndValue;
+    nso.xEnd = 0xffff;
     nso.fDelim = _JSONSerialize_ContainerDelimiter;
+    nso.xDelim = N_DICT | N_ARRAY;
     Node_Serializer(node, &nso, b);
 
     *json = b->buf;

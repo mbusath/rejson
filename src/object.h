@@ -12,13 +12,16 @@
 * NodeType represents the type of a node in an object.
 */
 typedef enum {
-    N_STRING,
-    N_NUMBER,
-    N_INTEGER,
-    N_BOOLEAN,
-    N_DICT,
-    N_ARRAY,
-    N_KEYVAL
+    N_NULL = 0x1,       // only used in masks
+    N_STRING = 0x2,
+    N_NUMBER = 0x4,
+    N_INTEGER = 0x8,
+    N_BOOLEAN = 0x10,
+    N_DICT = 0x20,
+    N_ARRAY = 0x40,
+    N_KEYVAL = 0x80
+    // N_DATETIME = 0x100
+    // N_BINARY = 0x200
 } NodeType;
 
 struct t_node;
@@ -184,7 +187,7 @@ typedef struct {
     NodeSerializerValue fBegin;      // begin node serializer callback
     NodeSerializerValue fEnd;        // end node serializer callback
     NodeSerializerContainer fDelim;  // container node delimiter callback
-    // TODO: callback type flags?
+    int xBegin, xEnd, xDelim;        // node type bitmasks 
 } NodeSerializerOpt;
 
 /**

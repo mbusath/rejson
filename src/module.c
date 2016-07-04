@@ -19,6 +19,7 @@
 /* Issues/Open
  - Appending to lists? Pushing at the beginning? Inserting in the middle?
  - JSON.COUNT key path
+ - sds must: cc -Bsymbolic & ld -fvisibility=hidden
 */
 
 #ifndef IS_REDIS_MODULE
@@ -27,6 +28,7 @@
 
 #include "redismodule.h"
 #include "object.h"
+#include "object_type.h"
 #include "json_object.h"
 #include "json_path.h"
 #include "../deps/rmutil/util.h"
@@ -61,30 +63,21 @@
 static RedisModuleType *JsonType;
 
 // == JsonType methods ==
-void *JsonTypeRdbLoad(RedisModuleIO *rdb, int encver) {
+void *JSONTypeRdbLoad(RedisModuleIO *rdb, int encver) {
     if (encver != JSONTYPE_ENCODING_VERSION) {
         /* RedisModule_Log("warning","Can't load data with version %d", encver);*/
         return NULL;
     }
+    return ObjectTypeRdbLoad(rdb);
 }
 
-void JsonTypeRdbSave(RedisModuleIO *rdb, void *value) {}
-
-void JsonTypeAofRewrite(RedisModuleIO *aof, RedisModuleString *key, void *value) {}
-
-void JsonTypeDigest(RedisModuleDigest *digest, void *value) {
-    // TODO: once digest is impelemented.
-}
-
-void JsonTypeFree(void *value) {
-    if (value) Node_Free(value);
+void JSONTypeAofRewrite(RedisModuleIO *aof, RedisModuleString *key, void *value) {
+    // serialize value & do JSON.SET
 }
 
 // == Module commands ==
 /* JSON.SET <key> <path> <json> [SCHEMA <schema-key>]
 */
-int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
-    __attribute__((visibility("default")));
 int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     // check args
     if ((argc < 4) || (argc > 6)) return RedisModule_WrongArity(ctx);
@@ -223,8 +216,6 @@ error:
 * NEWLINE: newline string
 * SPACE: space string
 */
-int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
-    __attribute__((visibility("default")));
 int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if ((argc < 2)) return RedisModule_WrongArity(ctx);
     RedisModule_AutoMemory(ctx);
@@ -324,8 +315,6 @@ int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
 }
 
 /* Unit test entry point for the module. */
-int TestModule(RedisModuleCtx *ctx, RedisModuleString **argv, int argc)
-    __attribute__((visibility("default")));
 int TestModule(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     RedisModule_AutoMemory(ctx);
 
@@ -339,8 +328,8 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx) {
         return REDISMODULE_ERR;
 
     JsonType = RedisModule_CreateDataType(ctx, JSONTYPE_NAME, JSONTYPE_ENCODING_VERSION,
-                                          JsonTypeRdbLoad, JsonTypeRdbSave, JsonTypeAofRewrite,
-                                          JsonTypeDigest, JsonTypeFree);
+                                          JSONTypeRdbLoad, ObjectTypeRdbSave, JSONTypeAofRewrite,
+                                          ObjectTypeDigest, ObjectTypeFree);
 
     // /* Main commands. */
     if (RedisModule_CreateCommand(ctx, "json.set", JSONSet_RedisCommand,

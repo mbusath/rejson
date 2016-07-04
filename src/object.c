@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "../deps/rmutil/vector.h"
+#include "vector_util.h"
 #include "rmalloc.h"
 
 Node *__newNode(NodeType t) {
@@ -336,92 +337,104 @@ void Node_Print(Node *n, int depth) {
 
 // serializer stack
 typedef struct {
-    int level;      // current level
-    int pos;        // 0-based level
+    int level;  // current level
+    int pos;    // 0-based level
     Vector *nodes;
     Vector *indices;
 
-} t_serializer_stack;
-
-// Pops a vector's last element (no resizing though)
-// TODO: maybe move to vector.h?
-void *Vector_Pop(Vector *v) {
-    void *ret = NULL;
-    if (v->top) {
-        Vector_Get(v, v->top - 1, &ret);
-        v->top--;
-    }
-    return ret;
-}
+} NodeSerializerStack;
 
 // serializer stack push
-void _serializerPush(t_serializer_stack *s, const Node *n) {
+static inline void _serializerPush(NodeSerializerStack *s, const Node *n) {
     s->level++;
     Vector_Push(s->nodes, n);
     Vector_Push(s->indices, 0);
 }
 
 // serializer stack push
-void _serializerPop(t_serializer_stack *s) {
+static inline void _serializerPop(NodeSerializerStack *s) {
     s->level--;
     Vector_Pop(s->nodes);
     Vector_Pop(s->indices);
 }
+
+#define _maskenabled(n, x) ((n ? n->type : N_NULL) & x)
+
+// serialzer states
+typedef enum {
+    S_INIT,
+    S_BEGIN_VALUE,
+    S_CONT_VALUE,
+    S_END_VALUE,
+    S_CONTAINER,
+    S_END
+} NodeSerializerState;
 
 void Node_Serializer(const Node *n, const NodeSerializerOpt *o, void *ctx) {
     Node *curr_node;
     int curr_len;
     int curr_index;
     Node **curr_entries;
+    NodeSerializerStack stack = {0};
+    NodeSerializerState state = S_INIT;
 
-    t_serializer_stack s = {0};
-    s.nodes = NewVector(Node *, 0);
-    s.indices = NewVector(int, 0);
-
-    _serializerPush(&s, n);
-    
-NODE_BEGIN:
-    Vector_Get(s.nodes, s.level - 1, &curr_node);
-    o->fBegin(curr_node, ctx);
-    // NULL nodes need special care
-    if (!curr_node) goto NODE_END;
-
-NODE_CONTINUE:
-    // Only containers require further fondling, the rest fall through
-    if (N_DICT == curr_node->type) {
-        curr_len = curr_node->value.dictval.len;
-        curr_entries = curr_node->value.dictval.entries;
-        goto CONTAINER;
-    } else if (N_ARRAY == curr_node->type) {
-        curr_len = curr_node->value.arrval.len;
-        curr_entries = curr_node->value.arrval.entries;
-        goto CONTAINER;
-    } else if (N_KEYVAL == curr_node->type) {
-        curr_len = 1;
-        curr_entries = &curr_node->value.kvval.val;
-        goto CONTAINER;
+    // ===
+    while (S_END != state) {
+        switch (state) {
+            case S_INIT:  // initial state
+                stack.nodes = NewVector(Node *, 0);
+                stack.indices = NewVector(int, 0);
+                _serializerPush(&stack, n);
+                state = S_BEGIN_VALUE;
+                break;
+            case S_BEGIN_VALUE:  // begining of a new value
+                Vector_Get(stack.nodes, stack.level - 1, &curr_node);
+                if (_maskenabled(curr_node, o->xBegin)) o->fBegin(curr_node, ctx);
+                // NULL nodes have no type so they need special care
+                state = curr_node ? S_CONT_VALUE : S_END_VALUE;
+                break;
+            case S_CONT_VALUE:  // container values
+                if (N_DICT == curr_node->type) {
+                    curr_len = curr_node->value.dictval.len;
+                    curr_entries = curr_node->value.dictval.entries;
+                    state = S_CONTAINER;
+                } else if (N_ARRAY == curr_node->type) {
+                    curr_len = curr_node->value.arrval.len;
+                    curr_entries = curr_node->value.arrval.entries;
+                    state = S_CONTAINER;
+                } else if (N_KEYVAL == curr_node->type) {
+                    curr_len = 1;
+                    curr_entries = &curr_node->value.kvval.val;
+                    state = S_CONTAINER;
+                } else {
+                    state = S_END_VALUE;  // must be non-container
+                }
+                break;
+            case S_CONTAINER:  // go over container's contents
+                Vector_Get(stack.indices, stack.level - 1, &curr_index);
+                if (curr_index < curr_len) {
+                    if (curr_index & _maskenabled(curr_node, o->xDelim)) o->fDelim(ctx);
+                    Vector_Put(stack.indices, stack.level - 1, curr_index + 1);
+                    _serializerPush(&stack, curr_entries[curr_index]);
+                    state = S_BEGIN_VALUE;
+                } else {
+                    state = S_END_VALUE;
+                }
+                break;
+            case S_END_VALUE:  // finished with the current value
+                if (_maskenabled(curr_node, o->xEnd)) o->fEnd(curr_node, ctx);
+                _serializerPop(&stack);
+                if (stack.level) {  // if the value belongs to a container, go back to the container
+                    Vector_Get(stack.nodes, stack.level - 1, &curr_node);
+                    state = S_CONT_VALUE;
+                } else {
+                    state = S_END;  // otherwise we're done serializing
+                }
+                break;
+            case S_END:  // keeps the compiler from compaining
+                break;
+        }  // switch(state)
     }
-    // Others go to the end
-    goto NODE_END;
-
-CONTAINER:
-    Vector_Get(s.indices, s.level - 1, &curr_index);
-    if (curr_index < curr_len) {
-        if (curr_index) o->fDelim(ctx);
-        Vector_Put(s.indices, s.level - 1, curr_index + 1);
-        _serializerPush(&s, curr_entries[curr_index]);
-        goto NODE_BEGIN;
-    }
-
-NODE_END:
-    o->fEnd(curr_node, ctx);
-    _serializerPop(&s);
-    if (s.level) {
-        Vector_Get(s.nodes, s.level - 1, &curr_node);
-        goto NODE_CONTINUE;
-    }
-
-SERIALIZER_END:
-    Vector_Free(s.nodes);
-    Vector_Free(s.indices);
+    Vector_Free(stack.nodes);
+    Vector_Free(stack.indices);
 }
