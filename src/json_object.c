@@ -4,10 +4,10 @@
 #include <math.h>
 #include "rmalloc.h"
 /* Open issues:
-- string serialization
 - move jsonsl to deps
 - move include files to include
 - consider replacing jsonsl with RapidJSON
+- UTF?
 */
 
 /* === Parser === */
@@ -69,9 +69,8 @@ void popCallback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *s
             break;
     }
 
-    // Basically anything that pops from the JSON lexer needs to be set in its parent, except
-    // 1. The root element (i.e. end of JSON)
-    // 2. Hashkeys are postponed until their values are popped (resulting in a double-pop, a.k.a DP)
+    // Basically anything that pops from the JSON lexer needs to be set in its parent, except the
+    // root element
     if (joctx->nlen > 1 && state->type != JSONSL_T_HKEY) {
         NodeType p = joctx->nodes[joctx->nlen - 2]->type;
         switch (p) {
@@ -184,9 +183,50 @@ typedef struct {
 
 void _JSONSerialize_StringValue(Node *n, void *ctx) {
     _JSONBuilderContext *b = (_JSONBuilderContext *)ctx;
-    sds s = sdsnewlen(n->value.strval.data, n->value.strval.len);
-    // TODO: escapes and shit! check out sdscatrepr
-    b->buf = sdscatfmt(b->buf, "\"%S\"", s);
+    size_t len = n->value.strval.len;
+    const char *c = n->value.strval.data;
+
+    sds s = sdsnewlen("\"", 1);
+    s = sdsgrowzero(s, len + 2);  // if no characters need to be escaped, this should be exact
+    while (len--) {
+        if ((unsigned char)*c > 31 && *c != '\"' && *c != '\\' && *c != '/') {
+            s = sdscatlen(s, c, 1);
+        } else {
+            s = sdscatlen(s, "\\", 1);  // escape it
+            switch (*c) {
+                case '\"':  // quotation mark
+                    s = sdscatlen(s, "\"", 1);
+                    break;
+                case '\\':  // solidus
+                    s = sdscatlen(s, "\\", 1);
+                    break;
+                case '/':  // reverse solidus
+                    s = sdscatlen(s, "/", 1);
+                    break;
+                case '\b':  // backspace
+                    s = sdscatlen(s, "b", 1);
+                    break;
+                case '\f':  // formfeed
+                    s = sdscatlen(s, "f", 1);
+                    break;
+                case '\n':  // newline
+                    s = sdscatlen(s, "n", 1);
+                    break;
+                case '\r':  // carriage return
+                    s = sdscatlen(s, "r", 1);
+                    break;
+                case '\t':  // tab
+                    s = sdscatlen(s, "t", 1);
+                    break;
+                default:  // anything between 0 and 31
+                    s = sdscatprintf(s, "u%04x", (unsigned char)*c);
+                    break;
+            }  // switch (*chr)
+        }
+        c++;
+    }
+    s = sdscatlen(s, "\"", 1);
+    b->buf = sdscatsds(b->buf, s);
     sdsfree(s);
 }
 
