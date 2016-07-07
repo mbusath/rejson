@@ -54,6 +54,9 @@ void SearchPath_AppendIndex(SearchPath *p, int idx);
 /* Append a string key lookup node to the search path */
 void SearchPath_AppendKey(SearchPath *p, const char *key);
 
+/* Appends a root node to the search path (makes sense only as the first append)  */
+void SearchPath_AppendRoot(SearchPath *p);
+
 /* Free a search path and all its nodes */
 void SearchPath_Free(SearchPath *p);
 

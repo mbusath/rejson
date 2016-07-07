@@ -71,6 +71,12 @@ void SearchPath_AppendKey(SearchPath *p, const char *key) {
     __searchPath_append(p, pn);
 }
 
+void SearchPath_AppendRoot(SearchPath *p) {
+    PathNode pn;
+    pn.type = NT_ROOT;
+    __searchPath_append(p, pn);
+}
+
 void SearchPath_Free(SearchPath *p) {
     if (p->nodes) {
         for (int i = 0; i < p->len; i++) {

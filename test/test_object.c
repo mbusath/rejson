@@ -99,6 +99,18 @@ MU_TEST(testPathParse) {
     // printf("sp len: %zd\n", sp.len);
 }
 
+MU_TEST(testPathParseRoot) {
+    const char *path = ".";
+
+    SearchPath sp = NewSearchPath(0);
+    int rc = ParseJSONPath(path, strlen(path), &sp);
+    mu_assert_int_eq(rc, PARSE_OK);
+    mu_assert_int_eq(sp.len, 1);
+    mu_check(NT_ROOT == sp.nodes[0].type);
+
+    SearchPath_Free(&sp);
+}
+
 MU_TEST_SUITE(test_object) {
     // MU_SUITE_CONFIGURE(&test_setup, &test_teardown);
 
@@ -106,6 +118,7 @@ MU_TEST_SUITE(test_object) {
     MU_RUN_TEST(testPath);
 
     MU_RUN_TEST(testPathParse);
+    MU_RUN_TEST(testPathParseRoot);
 }
 
 int main(int argc, char *argv[]) {

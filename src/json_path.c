@@ -97,7 +97,7 @@ int _tokenizePath(const char *json, size_t len, SearchPath *path) {
                 tok.len++;
                 break;
 
-            // we're withing a bracketed string key
+            // we're within a bracketed string key
             case S_KEY:
                 // end of key
                 if (c == '"') {
@@ -113,7 +113,7 @@ int _tokenizePath(const char *json, size_t len, SearchPath *path) {
                 }
                 tok.len++;
                 break;
-        }
+        }  // switch (st)
         offset++;
         pos++;
         // ident string must end if len reached
@@ -124,11 +124,9 @@ int _tokenizePath(const char *json, size_t len, SearchPath *path) {
         }
         continue;
     tokenend : {
-        // printf("token: %.*s\n", (int) tok.len, tok.s);
         if (tok.type == T_INDEX) {
             // convert the string to int. we can't use atoi because it expects
-            // NULL
-            // termintated strings
+            // NULL termintated strings
             int64_t num = 0;
             for (int i = 0; i < tok.len; i++) {
                 int digit = tok.s[i] - '0';
@@ -137,12 +135,16 @@ int _tokenizePath(const char *json, size_t len, SearchPath *path) {
 
             SearchPath_AppendIndex(path, num);
         } else if (tok.type == T_KEY) {
-            SearchPath_AppendKey(path, strndup(tok.s, tok.len));
+            if (1 == offset == len && '.' == c) {   // check for root
+                SearchPath_AppendRoot(path);
+            } else {
+                SearchPath_AppendKey(path, strndup(tok.s, tok.len));
+            }
         }
         tok.s = pos;
         tok.len = 0;
     }
-    }
+    }  // while (offset < len)
 
     // these are the only legal states at the end of consuming the string
     if (st == S_NULL || st == S_IDENT) {
@@ -150,7 +152,6 @@ int _tokenizePath(const char *json, size_t len, SearchPath *path) {
     }
 
 syntaxerror:
-    // printf("syntax error at offset %zd ('%c')\n", offset, json[offset]);
     return OBJ_ERR;
 }
 
