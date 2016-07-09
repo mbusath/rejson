@@ -238,6 +238,7 @@ MU_TEST(test_oj_boolean) {
     sdsfree(str);
     Node_Free(n);
 
+    str = sdsempty();
     n = NewBoolNode(1);
     mu_check(n);
     SerializeNodeToJSON(n, &opt, &str);
@@ -260,6 +261,7 @@ MU_TEST(test_oj_integer) {
     sdsfree(str);
     Node_Free(n);
 
+    str = sdsempty();
     n = NewIntNode(42);
     mu_check(n);
     SerializeNodeToJSON(n, &opt, &str);
@@ -268,6 +270,7 @@ MU_TEST(test_oj_integer) {
     sdsfree(str);
     Node_Free(n);
 
+    str = sdsempty();
     n = NewIntNode(-6379);
     mu_check(n);
     SerializeNodeToJSON(n, &opt, &str);

@@ -138,7 +138,7 @@ int _tokenizePath(const char *json, size_t len, SearchPath *path) {
             if (1 == offset == len && '.' == c) {   // check for root
                 SearchPath_AppendRoot(path);
             } else {
-                SearchPath_AppendKey(path, strndup(tok.s, tok.len));
+                SearchPath_AppendKey(path, tok.s, tok.len);
             }
         }
         tok.s = pos;

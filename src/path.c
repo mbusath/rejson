@@ -1,5 +1,6 @@
 #include "path.h"
 #include <sys/param.h>
+#include <string.h>
 #include "rmalloc.h"
 
 Node *__pathNode_eval(PathNode *pn, Node *n, PathError *err) {
@@ -64,10 +65,10 @@ void SearchPath_AppendIndex(SearchPath *p, int idx) {
     pn.value.index = idx;
     __searchPath_append(p, pn);
 }
-void SearchPath_AppendKey(SearchPath *p, const char *key) {
+void SearchPath_AppendKey(SearchPath *p, const char *key, const size_t len) {
     PathNode pn;
     pn.type = NT_KEY;
-    pn.value.key = key;
+    pn.value.key = strndup(key, len);
     __searchPath_append(p, pn);
 }
 

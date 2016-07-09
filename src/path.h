@@ -52,7 +52,7 @@ SearchPath NewSearchPath(size_t cap);
 void SearchPath_AppendIndex(SearchPath *p, int idx);
 
 /* Append a string key lookup node to the search path */
-void SearchPath_AppendKey(SearchPath *p, const char *key);
+void SearchPath_AppendKey(SearchPath *p, const char *key, const size_t len);
 
 /* Appends a root node to the search path (makes sense only as the first append)  */
 void SearchPath_AppendRoot(SearchPath *p);
