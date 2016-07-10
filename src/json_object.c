@@ -327,13 +327,12 @@ void SerializeNodeToJSON(const Node *node, const JSONSerializeOpt *opt, sds *jso
     b->delimstr = sdsnewlen(",", 1);
     b->delimstr = sdscat(b->delimstr, b->newlinestr);
 
-    NodeSerializerOpt nso = {0};
-    nso.fBegin = _JSONSerialize_BeginValue;
-    nso.xBegin = 0xffff;
-    nso.fEnd = _JSONSerialize_EndValue;
-    nso.xEnd = 0xffff;
-    nso.fDelim = _JSONSerialize_ContainerDelimiter;
-    nso.xDelim = N_DICT | N_ARRAY;
+    NodeSerializerOpt nso = {.fBegin = _JSONSerialize_BeginValue,
+                             .xBegin = 0xffff,
+                             .fEnd = _JSONSerialize_EndValue,
+                             .xEnd = (N_DICT | N_ARRAY),
+                             .fDelim = _JSONSerialize_ContainerDelimiter,
+                             .xDelim = (N_DICT | N_ARRAY)};
 
     // the real work
     // b->buf = *json; <- this causes memory crap???

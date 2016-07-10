@@ -52,7 +52,7 @@ MU_TEST(testPath) {
     mu_check(OBJ_OK == Node_DictSet(root, "baz", arr));
 
     SearchPath sp = NewSearchPath(2);
-    SearchPath_AppendKey(&sp, "baz");
+    SearchPath_AppendKey(&sp, "baz", 3);
     SearchPath_AppendIndex(&sp, 0);
 
     Node *n = NULL;
@@ -65,6 +65,7 @@ MU_TEST(testPath) {
     mu_check(!strcmp(n->value.strval.data, "hello"));
 
     Node_Print(n, 0);
+    SearchPath_Free(&sp);
     Node_Free(root);
 }
 

@@ -358,7 +358,7 @@ static inline void _serializerPop(NodeSerializerStack *s) {
     Vector_Pop(s->indices);
 }
 
-#define _maskenabled(n, x) ((n ? n->type : N_NULL) & x)
+#define _maskenabled(n, x) ((int)(n ? n->type : N_NULL) & x)
 
 // serialzer states
 typedef enum {
@@ -382,8 +382,8 @@ void Node_Serializer(const Node *n, const NodeSerializerOpt *o, void *ctx) {
     while (S_END != state) {
         switch (state) {
             case S_INIT:  // initial state
-                stack.nodes = NewVector(Node *, 0);
-                stack.indices = NewVector(int, 0);
+                stack.nodes = NewVector(Node *, 1);
+                stack.indices = NewVector(int, 1);
                 _serializerPush(&stack, n);
                 state = S_BEGIN_VALUE;
                 break;
@@ -413,7 +413,7 @@ void Node_Serializer(const Node *n, const NodeSerializerOpt *o, void *ctx) {
             case S_CONTAINER:  // go over container's contents
                 Vector_Get(stack.indices, stack.level - 1, &curr_index);
                 if (curr_index < curr_len) {
-                    if (curr_index & _maskenabled(curr_node, o->xDelim)) o->fDelim(ctx);
+                    if (curr_index && _maskenabled(curr_node, o->xDelim)) o->fDelim(ctx);
                     Vector_Put(stack.indices, stack.level - 1, curr_index + 1);
                     _serializerPush(&stack, curr_entries[curr_index]);
                     state = S_BEGIN_VALUE;
