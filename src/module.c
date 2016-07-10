@@ -83,8 +83,14 @@ void JSONTypeAofRewrite(RedisModuleIO *aof, RedisModuleString *key, void *value)
     sds json = sdsnewlen("\"", 1);
     SerializeNodeToJSON(n, &jsopt, &json);
     json = sdscatlen(json, "\"", 1);
-    RedisModule_EmitAOF(aof, "JSON.SET", "scb", key, ".", json, sdslen(json));
+    RedisModule_EmitAOF(aof, "JSON.SET", "scb", key, OBJECT_ROOT_PATH, json, sdslen(json));
     sdsfree(json);
+}
+
+// == Helpers ==
+/* Check if a search path is the root search path (i.e. '.') */
+static inline int SearchPath_IsRootPath(SearchPath *sp) {
+    return (1 == sp->len && NT_ROOT == sp->nodes[0].type);
 }
 
 // == Module commands ==
@@ -106,12 +112,9 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     size_t pathlen;
     const char *path = RedisModule_StringPtrLen(argv[2], &pathlen);
     SearchPath sp = NewSearchPath(0);
-    if (strncmp(OBJECT_ROOT_PATH, path,
-                pathlen)) {  // TODO: this fails if the path has whitespaces...
-        if (PARSE_ERR == ParseJSONPath(path, pathlen, &sp)) {
-            RedisModule_ReplyWithError(ctx, REJSON_ERROR_PARSE_PATH);
-            goto error;
-        }
+    if (PARSE_ERR == ParseJSONPath(path, pathlen, &sp)) {
+        RedisModule_ReplyWithError(ctx, REJSON_ERROR_PARSE_PATH);
+        goto error;
     }
 
     // Subcommand SCHEMA must be an existing JSON schema or the empty string
@@ -142,7 +145,7 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     // The stored JSON object root
     if (REDISMODULE_KEYTYPE_EMPTY == type) {
         // new keys must be created at the root
-        if (sp.len) {
+        if (!SearchPath_IsRootPath(&sp)) {
             RedisModule_ReplyWithError(ctx, REJSON_ERROR_NEW_NOT_ROOT);
             goto error;
         }
@@ -155,7 +158,7 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     } else {  // if (REDISMODULE_KEYTYPE_EMPTY == type)
         Node *objRoot = RedisModule_ModuleTypeGetValue(key);
         Node *objTarget, *objParent;
-        if (sp.len) {  // anything but the root
+        if (!SearchPath_IsRootPath(&sp)) {  // anything but the root
             PathError pe = SearchPath_Find(&sp, objRoot, &objTarget);
             if (E_OK != pe) {
                 switch (pe) {
@@ -200,6 +203,7 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
                     RedisModule_ReplyWithError(ctx, REJSON_ERROR_ARRAY_SET);
                     goto error;
                 }
+                // unlike DictSet, ArraySet does not free so we need to call it explicitly (TODO?)
                 Node_Free(objTarget);
             }
         } else {  // if (sp.len) <- replace the root
@@ -268,24 +272,25 @@ int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
             jsopt.spacestr = "";
         }
     }
-    // path must be valid, the root path is an exception
+
+    // path must be valid, if not provided default to root
     size_t pathlen;
     const char *path;
     SearchPath sp = NewSearchPath(0);
     if (pathpos < argc) {
         path = RedisModule_StringPtrLen(argv[pathpos], &pathlen);
-        if (strncmp(OBJECT_ROOT_PATH, path, pathlen)) {
-            if (PARSE_ERR == ParseJSONPath(path, pathlen, &sp)) {
-                RedisModule_ReplyWithError(ctx, REJSON_ERROR_PARSE_PATH);
-                return REDISMODULE_ERR;
-            }
+        if (PARSE_ERR == ParseJSONPath(path, pathlen, &sp)) {
+            RedisModule_ReplyWithError(ctx, REJSON_ERROR_PARSE_PATH);
+            return REDISMODULE_ERR;
         }
+    } else {
+        ParseJSONPath(OBJECT_ROOT_PATH, 1, &sp);
     }
 
     Object *objRoot = RedisModule_ModuleTypeGetValue(key);
     Object *objTarget;
 
-    if (sp.len) {
+    if (!SearchPath_IsRootPath(&sp)) {
         PathError pe = SearchPath_Find(&sp, objRoot, &objTarget);
         if (E_OK != pe) {
             switch (pe) {
