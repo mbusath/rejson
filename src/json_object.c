@@ -187,7 +187,6 @@ void _JSONSerialize_StringValue(Node *n, void *ctx) {
     const char *c = n->value.strval.data;
 
     sds s = sdsnewlen("\"", 1);
-    s = sdsgrowzero(s, len + 2);  // if no characters need to be escaped, this should be exact
     while (len--) {
         if ((unsigned char)*c > 31 && *c != '\"' && *c != '\\' && *c != '/') {
             s = sdscatlen(s, c, 1);
@@ -327,9 +326,7 @@ void SerializeNodeToJSON(const Node *node, const JSONSerializeOpt *opt, sds *jso
     b->indent = sdslen(b->indentstr);
     b->delimstr = sdsnewlen(",", 1);
     b->delimstr = sdscat(b->delimstr, b->newlinestr);
-    b->buf = sdsempty();
 
-    // the real work
     NodeSerializerOpt nso = {0};
     nso.fBegin = _JSONSerialize_BeginValue;
     nso.xBegin = 0xffff;
@@ -337,8 +334,12 @@ void SerializeNodeToJSON(const Node *node, const JSONSerializeOpt *opt, sds *jso
     nso.xEnd = 0xffff;
     nso.fDelim = _JSONSerialize_ContainerDelimiter;
     nso.xDelim = N_DICT | N_ARRAY;
-    Node_Serializer(node, &nso, b);
 
+    // the real work
+    // b->buf = *json; <- this causes memory crap???
+    b->buf = sdsdup(*json);
+    Node_Serializer(node, &nso, b);
+    sdsfree(*json);
     *json = b->buf;
 
     sdsfree(b->indentstr);
