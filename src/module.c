@@ -72,7 +72,19 @@ void *JSONTypeRdbLoad(RedisModuleIO *rdb, int encver) {
 }
 
 void JSONTypeAofRewrite(RedisModuleIO *aof, RedisModuleString *key, void *value) {
-    // serialize value & do JSON.SET
+    // two approaches:
+    // 1. For small documents it makes more sense to serialze the entire document in one go
+    // 2. Large documents need to be broken to smaller pieces in order to stay within 0.5GB, but
+    // we'll need some meta data to make sane-sized chunks so this gets lower priority atm
+    Node *n = (Node *)value;
+
+    // serialize it
+    JSONSerializeOpt jsopt = {.indentstr = "", .newlinestr = "", .spacestr = ""};
+    sds json = sdsnewlen("\"", 1);
+    SerializeNodeToJSON(n, &jsopt, &json);
+    json = sdscatlen(json, "\"", 1);
+    RedisModule_EmitAOF(aof, "JSON.SET", "scb", key, ".", sdslen(json));
+    sdsfree(json);
 }
 
 // == Module commands ==
