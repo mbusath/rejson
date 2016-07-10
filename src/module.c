@@ -83,7 +83,7 @@ void JSONTypeAofRewrite(RedisModuleIO *aof, RedisModuleString *key, void *value)
     sds json = sdsnewlen("\"", 1);
     SerializeNodeToJSON(n, &jsopt, &json);
     json = sdscatlen(json, "\"", 1);
-    RedisModule_EmitAOF(aof, "JSON.SET", "scb", key, ".", sdslen(json));
+    RedisModule_EmitAOF(aof, "JSON.SET", "scb", key, ".", json, sdslen(json));
     sdsfree(json);
 }
 
