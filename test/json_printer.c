@@ -28,7 +28,7 @@ int main(int argc, char **argv) {
         ret = 1;
         printf("-%s\n", err ? err : "ERR unknown");
     } else {
-        sds ser;
+        sds ser = sdsempty();
         JSONSerializeOpt opt;
         opt.indentstr = "    ";
         opt.newlinestr = "\n";
@@ -38,7 +38,7 @@ int main(int argc, char **argv) {
             ret = 1;
             printf("-ERR no JSON serialized\n");
         } else {
-            printf("%.*s\n", (int) sdslen(ser), ser);
+            printf("%.*s\n", (int)sdslen(ser), ser);
         }
         sdsfree(ser);
     }
