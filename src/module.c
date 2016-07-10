@@ -202,14 +202,13 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
                 }
                 Node_Free(objTarget);
             }
-            SearchPath_Free(&sp);
         } else {  // if (sp.len) <- replace the root
-            // TODO: FIX MEMORY LEAK
             RedisModule_DeleteKey(key);
             RedisModule_ModuleTypeSetValue(key, JsonType, jo);
         }
     }
 
+    SearchPath_Free(&sp);
     RedisModule_ReplyWithSimpleString(ctx, "OK");
 
     RedisModule_ReplicateVerbatim(ctx);
