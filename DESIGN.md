@@ -29,13 +29,16 @@ Proposed API for the module:
 ```
 JSON.SET <key> <path> <json> [SCHEMA <schema_key>]
 
-JSON.GET <key> [FORMAT PRETTIFY|MINIFY] [INDENT <indentation-string>] [BREAK <line-break-string>] [<path>]
+JSON.GET <key> [INDENT <indentation-string>] [BREAK <line-break-string>] [SPACE <space-string>] [<path>]
 
 JSON.MGET <path> <key> [<key> ...]
 
-JSON.APPEND <key> <path> <json>
+JSON.ARRINSERT key path index json 
+-1 ==> push right
+0 ==> push left
+or adding modifiers to JSON.SET, e.g. JSON.SET [AS|AP] - AP = array push, AS = array shift (insert in the middle)
 
-JSON.DEL <key> <path>
+JSON.DEL <key> <path> [<path> ...]
 
 JSON.SETSCHEMA <key> <json> 
   Notes:

@@ -55,10 +55,11 @@
 #define REJSON_ERROR_PATH_NOINDEX "ERR path index out of range"
 #define REJSON_ERROR_PATH_NOKEY "ERR path key does not exist"
 #define REJSON_ERROR_PATH_UNKNOWN "ERR unknown path error"
-#define REJSON_ERROR_PATH_PARENT "ERR couldn't locate parent... that's odd"
 #define REJSON_ERROR_DICT_SET "ERR couldn't set key in dictionary"
 #define REJSON_ERROR_ARRAY_SET "ERR couldn't set item in array"
 #define REJSON_ERROR_SERIALIZE "ERR object serialization to JSON failed"
+#define REJSON_ERROR_DICT_DEL "ERR could not delete from dictionary"
+#define REJSON_ERROR_ARRAY_DEL "ERR could not delete from array"
 
 static RedisModuleType *JsonType;
 
@@ -95,11 +96,14 @@ static inline int SearchPath_IsRootPath(SearchPath *sp) {
 
 // == Module commands ==
 /* JSON.SET <key> <path> <json> [SCHEMA <schema-key>]
+ * Reply: OK
 */
 int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     // check args
     if ((argc < 4) || (argc > 6)) return RedisModule_WrongArity(ctx);
     RedisModule_AutoMemory(ctx);
+
+    // TODO: handle getkeys-api request due to SCHEMA being an optional arg
 
     // key must be empty or a JSON type
     RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ | REDISMODULE_WRITE);
@@ -108,7 +112,7 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
         return RedisModule_ReplyWithError(ctx, REDISMODULE_ERRORMSG_WRONGTYPE);
     }
 
-    // path must be valid, the root path is an exception
+    // path must be valid
     size_t pathlen;
     const char *path = RedisModule_StringPtrLen(argv[2], &pathlen);
     SearchPath sp = NewSearchPath(0);
@@ -117,7 +121,7 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
         goto error;
     }
 
-    // Subcommand SCHEMA must be an existing JSON schema or the empty string
+    // TODO: Subcommand SCHEMA must be an existing JSON schema or the empty string
 
     // JSON must be valid
     size_t jsonlen;
@@ -140,7 +144,7 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
         goto error;
     }
 
-    // JSON must be validated against schema
+    // TODO: JSON must be validated against schema
 
     // The stored JSON object root
     if (REDISMODULE_KEYTYPE_EMPTY == type) {
@@ -186,10 +190,6 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
                 sp.len--;
                 pe = SearchPath_Find(&sp, objRoot, &objParent);
                 sp.len++;
-                if (E_OK != pe) {
-                    RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_PARENT);
-                    goto error;
-                }
             }
 
             // replace target with jo
@@ -225,11 +225,12 @@ error:
 }
 
 /* JSON.GET <key> INDENT <indentation-string>] [NEWLINE <newline-string>] [SPACE
-* <space-string>] [<path>]
-* if path not given, defaults to root
-* INDENT: indentation string
-* NEWLINE: newline string
-* SPACE: space string
+ * <space-string>] [<path>]
+ * if path not given, defaults to root
+ * INDENT: indentation string
+ * NEWLINE: newline string
+ * SPACE: space string
+ * Reply: JSON string
 */
 int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if ((argc < 2)) return RedisModule_WrongArity(ctx);
@@ -288,7 +289,7 @@ int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     }
 
     Object *objRoot = RedisModule_ModuleTypeGetValue(key);
-    Object *objTarget;
+    Object *objTarget;  // the node targetted for replacement
 
     if (!SearchPath_IsRootPath(&sp)) {
         PathError pe = SearchPath_Find(&sp, objRoot, &objTarget);
@@ -330,6 +331,123 @@ int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     return REDISMODULE_OK;
 }
 
+/* JSON.DEL <key> <path> [<path> ...]
+ * Reply: Number of paths deleted
+*/
+int JSONDel_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    // check args
+    if (argc < 3) return RedisModule_WrongArity(ctx);
+    RedisModule_AutoMemory(ctx);
+
+    // key must be empty or a JSON type
+    RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ | REDISMODULE_WRITE);
+    int type = RedisModule_KeyType(key);
+    if (REDISMODULE_KEYTYPE_EMPTY == type) {
+        RedisModule_ReplyWithLongLong(ctx, 0);
+        return REDISMODULE_OK;
+    } else if (RedisModule_ModuleTypeGetType(key) != JsonType) {
+        return RedisModule_ReplyWithError(ctx, REDISMODULE_ERRORMSG_WRONGTYPE);
+    }
+
+    // The stored JSON object root
+    Node *objRoot = RedisModule_ModuleTypeGetValue(key);
+
+    // paths must be valid and resolvable in the object
+    int npaths = argc - 2;
+    SearchPath *sp = calloc(npaths, sizeof(SearchPath));
+    Node **targets = calloc(npaths, sizeof(Node *));
+    int foundroot = 0;
+
+    for (int i = 0; i < npaths; i++) {
+        // first validate the path
+        size_t pathlen;
+        const char *path = RedisModule_StringPtrLen(argv[i + 2], &pathlen);
+        sp[i] = NewSearchPath(0);
+        if (PARSE_ERR == ParseJSONPath(path, pathlen, &sp[i])) {
+            RedisModule_ReplyWithError(ctx, REJSON_ERROR_PARSE_PATH);
+            goto error;
+        }
+        // next try resolving it
+        if (SearchPath_IsRootPath(&sp[i])) {
+            targets[i] = objRoot;
+            foundroot = 1;
+        } else {
+            PathError pe = SearchPath_Find(&sp[i], objRoot, &targets[i]);
+            if (E_OK != pe) {
+                switch (pe) {
+                    case E_BADTYPE:
+                        RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_BADTYPE);
+                        break;
+                    case E_NOINDEX:
+                        RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_NOINDEX);
+                        break;
+                    case E_NOKEY:
+                        RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_NOKEY);
+                        break;
+                    default:
+                        RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_UNKNOWN);
+                        break;
+                }  // switch (pe)
+                goto error;
+            }  // if (E_OK != pe)
+        }
+    }
+
+    // Iterate the target paths and remove them from their respective parents
+    // although root could appear anywhere, but we just delete the key if it is present
+    int deleted = 0;
+    if (foundroot) {
+        deleted = 1;
+        RedisModule_DeleteKey(key);
+    } else {
+        for (int i = 0; i < npaths; i++) {
+            Node *objParent;
+
+            // Who's your daddy? TODO: maybe move to path.c
+            if (sp[i].len == 1) {
+                objParent = objRoot;
+            } else {
+                // reuse the search path to find the target's parent
+                sp[i].len--;
+                PathError pe = SearchPath_Find(&sp[i], objRoot, &objParent);
+                sp[i].len++;
+            }
+
+            // delete the target
+            if (N_DICT == objParent->type) {
+                if (OBJ_OK != Node_DictDel(objParent, sp[i].nodes[sp[i].len - 1].value.key)) {
+                    RedisModule_ReplyWithError(ctx, REJSON_ERROR_DICT_DEL);
+                    goto error;
+                } else {
+                    deleted++;
+                }
+            } else {  // must be an array
+                      // TODO: delete from array?
+                // if (OBJ_OK != Node_ArrayDel(objParent, sp[i].nodes[sp[i].len - 1].value.index)) {
+                //     RedisModule_ReplyWithError(ctx, REJSON_ERROR_ARRAY_DEL);
+                //     goto error;
+                // } else {
+                //     deleted++;
+                // }
+            }
+        }  // for (int i = 0; i < npaths; i++)
+    }      // else
+
+    for (int i = 0; i < npaths; i++) SearchPath_Free(&sp[i]);
+    free(targets);
+    RedisModule_ReplyWithLongLong(ctx, (long long)deleted);
+
+    RedisModule_ReplicateVerbatim(ctx);
+    return REDISMODULE_OK;
+
+error:
+    if (sp) {
+        for (int i = 0; i < npaths; i++) SearchPath_Free(&sp[i]);
+    }
+    free(targets);
+    return REDISMODULE_ERR;
+}
+
 /* Unit test entry point for the module. */
 int TestModule(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     RedisModule_AutoMemory(ctx);
@@ -353,6 +471,10 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx) {
         return REDISMODULE_ERR;
 
     if (RedisModule_CreateCommand(ctx, "json.get", JSONGet_RedisCommand, "readonly", 1, 1, 1) ==
+        REDISMODULE_ERR)
+        return REDISMODULE_ERR;
+
+    if (RedisModule_CreateCommand(ctx, "json.del", JSONDel_RedisCommand, "write", 1, 1, 1) ==
         REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
