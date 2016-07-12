@@ -20,6 +20,7 @@ Node *__pathNode_eval(PathNode *pn, Node *n, PathError *err) {
         }
         return rn;
     }
+
     if (n->type == N_DICT) {
         if (pn->type != NT_KEY) {
             goto badtype;
@@ -49,6 +50,37 @@ PathError SearchPath_Find(SearchPath *path, Node *root, Node **n) {
     *n = current;
     return E_OK;
 }
+
+PathError SearchPath_FindEx(SearchPath *path, Node *root, Node **n, Node **p, int *errnode) {
+    Node *current = root;
+    Node *prev = NULL;
+    Node *next;
+    PathError ret;
+
+    for (int i = 0; i < path->len; i++) {
+        next = __pathNode_eval(&path->nodes[i], current, &ret);
+        if (ret != E_OK) {
+            *errnode = i;
+            switch (ret) {
+                case E_NOKEY:
+                    *p = i ? prev : root;
+                    break;
+                case E_NOINDEX:
+                    *p = current;
+                    break;
+                default:
+                    break;
+            }
+            return ret;
+        }
+        prev = current;
+        current = next;
+    }
+    *p = prev;
+    *n = current;
+    return E_OK;
+}
+
 SearchPath NewSearchPath(size_t cap) { return (SearchPath){calloc(cap, sizeof(PathNode)), 0, cap}; }
 
 void __searchPath_append(SearchPath *p, PathNode pn) {

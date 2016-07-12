@@ -66,7 +66,7 @@ static RedisModuleType *JsonType;
 // == JsonType methods ==
 void *JSONTypeRdbLoad(RedisModuleIO *rdb, int encver) {
     if (encver != JSONTYPE_ENCODING_VERSION) {
-        /* RedisModule_Log("warning","Can't load data with version %d", encver);*/
+        // RedisModule_Log(ctx, RM_LOGLEVEL_WARNING, "Can't load data with version %d", encver);
         return NULL;
     }
     return ObjectTypeRdbLoad(rdb);
@@ -161,44 +161,34 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
         RedisModule_ModuleTypeSetValue(key, JsonType, jo);
     } else {  // if (REDISMODULE_KEYTYPE_EMPTY == type)
         Node *objRoot = RedisModule_ModuleTypeGetValue(key);
-        Node *objTarget, *objParent;
+        Node *objParent = NULL;
+        Node *objTarget;
         if (!SearchPath_IsRootPath(&sp)) {  // anything but the root
-            PathError pe = SearchPath_Find(&sp, objRoot, &objTarget);
+            int errlevel = 0;
+            PathError pe = SearchPath_FindEx(&sp, objRoot, &objTarget, &objParent, &errlevel);
             if (E_OK != pe) {
-                switch (pe) {
-                    case E_BADTYPE:
-                        RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_BADTYPE);
-                        break;
-                    case E_NOINDEX:
-                        RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_NOINDEX);
-                        break;
-                    case E_NOKEY:
-                        RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_NOKEY);
-                        break;
-                    default:
-                        RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_UNKNOWN);
-                        break;
-                }  // switch (pe)
-                goto error;
+                if (E_BADTYPE == pe) {
+                    RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_BADTYPE);
+                    goto error;
+                }
+                // E_NOKEY and E_NOINDEX handling depends on the level - a terminal node is created
+                // while the others err
+                if (errlevel != sp.len - 1) {
+                    RedisModule_ReplyWithError(
+                        ctx, pe == E_NOKEY ? REJSON_ERROR_PATH_NOKEY : REJSON_ERROR_PATH_NOINDEX);
+                    goto error;
+                }
             }  // if (E_OK != pe)
 
-            // Who's your daddy? TODO: maybe move to path.c
-            if (sp.len == 1) {
-                objParent = objRoot;
-            } else {
-                // reuse the search path to find the target's parent
-                sp.len--;
-                pe = SearchPath_Find(&sp, objRoot, &objParent);
-                sp.len++;
-            }
-
-            // replace target with jo
+            // replace or create target
             if (N_DICT == objParent->type) {
                 if (OBJ_OK != Node_DictSet(objParent, sp.nodes[sp.len - 1].value.key, jo)) {
                     RedisModule_ReplyWithError(ctx, REJSON_ERROR_DICT_SET);
                     goto error;
                 }
             } else {  // must be an array
+                // TODO: Append to list with 0/-1 or AS/SP, also - perhaps mandate that value must
+                // be a list whose values are treated as the values to add
                 if (OBJ_OK != Node_ArraySet(objParent, sp.nodes[sp.len - 1].value.index, jo)) {
                     RedisModule_ReplyWithError(ctx, REJSON_ERROR_ARRAY_SET);
                     goto error;
@@ -475,6 +465,10 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx) {
         return REDISMODULE_ERR;
 
     if (RedisModule_CreateCommand(ctx, "json.del", JSONDel_RedisCommand, "write", 1, 1, 1) ==
+        REDISMODULE_ERR)
+        return REDISMODULE_ERR;
+
+    if (RedisModule_CreateCommand(ctx, "json.forget", JSONDel_RedisCommand, "write", 1, 1, 1) ==
         REDISMODULE_ERR)
         return REDISMODULE_ERR;
 

@@ -34,7 +34,7 @@ MU_TEST(testObject) {
     mu_check(n != NULL);
     mu_check(n->type == N_NUMBER);
 
-    Node_Print(root, 0);
+    // Node_Print(root, 0);
     Node_Free(root);
 }
 
@@ -64,8 +64,70 @@ MU_TEST(testPath) {
     mu_check(n->type == N_STRING);
     mu_check(!strcmp(n->value.strval.data, "hello"));
 
-    Node_Print(n, 0);
     SearchPath_Free(&sp);
+    Node_Free(root);
+}
+
+MU_TEST(testPathEx) {
+    Node *root = NewDictNode(1);
+    mu_check(root != NULL);
+
+    mu_check(OBJ_OK == Node_DictSet(root, "foo", NewStringNode("bar", 3)));
+    mu_check(OBJ_OK == Node_DictSet(root, "bar", NewBoolNode(0)));
+
+    Node *arr = NewArrayNode(0);
+    Node_ArrayAppend(arr, NewStringNode("hello", 5));
+    Node_ArrayAppend(arr, NewStringNode("world", 5));
+
+    mu_check(OBJ_OK == Node_DictSet(root, "baz", arr));
+
+    Node *n = NULL;
+    Node *p = NULL;
+    int errlevel = 0;
+    SearchPath sp;
+    PathError pe;
+
+    // sanity of a valid path
+    sp = NewSearchPath(2);
+    SearchPath_AppendKey(&sp, "baz", 3);
+    SearchPath_AppendIndex(&sp, 0);
+    pe = SearchPath_FindEx(&sp, root, &n, &p, &errlevel);
+    mu_check(pe == E_OK);
+    mu_check(0 == errlevel);
+    mu_check(arr == p);
+    mu_check(n != NULL);
+    mu_check(n->type == N_STRING);
+    mu_check(!strcmp(n->value.strval.data, "hello"));
+    SearchPath_Free(&sp);
+
+    // check for non existing key
+    sp = NewSearchPath(1);
+    SearchPath_AppendKey(&sp, "qux", 3);
+    pe = SearchPath_FindEx(&sp, root, &n, &p, &errlevel);
+    mu_check(E_NOKEY == pe);
+    mu_check(0 == errlevel);
+    mu_check(p == root);
+    SearchPath_Free(&sp);
+
+    // bad type
+    sp = NewSearchPath(2);
+    SearchPath_AppendKey(&sp, "foo", 3);
+    SearchPath_AppendIndex(&sp, 0);
+    pe = SearchPath_FindEx(&sp, root, &n, &p, &errlevel);
+    mu_check(E_BADTYPE == pe);
+    mu_check(1 == errlevel);
+    SearchPath_Free(&sp);
+
+    // check for non existing index
+    sp = NewSearchPath(2);
+    SearchPath_AppendKey(&sp, "baz", 3);
+    SearchPath_AppendIndex(&sp, 99);
+    pe = SearchPath_FindEx(&sp, root, &n, &p, &errlevel);
+    mu_check(E_NOINDEX == pe);
+    mu_check(1 == errlevel);
+    mu_check(arr == p);
+    SearchPath_Free(&sp);
+
     Node_Free(root);
 }
 
@@ -90,7 +152,7 @@ MU_TEST(testPathParse) {
                               "foo..bar", "foo['bar']", "foo/bar", NULL};
 
     for (int idx = 0; badpaths[idx] != NULL; idx++) {
-        printf("%s\n", badpaths[idx]);
+        // printf("%s\n", badpaths[idx]);
         mu_check(ParseJSONPath(badpaths[idx], strlen(badpaths[idx]), &sp) == PARSE_ERR);
     }
 
@@ -117,6 +179,7 @@ MU_TEST_SUITE(test_object) {
 
     MU_RUN_TEST(testObject);
     MU_RUN_TEST(testPath);
+    MU_RUN_TEST(testPathEx);
 
     MU_RUN_TEST(testPathParse);
     MU_RUN_TEST(testPathParseRoot);

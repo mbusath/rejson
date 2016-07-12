@@ -69,4 +69,9 @@ Node *__pathNode_eval(PathNode *pn, Node *n, PathError *err);
 */
 PathError SearchPath_Find(SearchPath *path, Node *root, Node **n);
 
+/**
+* Like SearchPath_Find, but sets p to the parent container of n and in case of a E_NOKEY or
+* E_NOINDEX returns the path level of the error
+*/
+PathError SearchPath_FindEx(SearchPath *path, Node *root, Node **n, Node **p, int *errnode);
 #endif
