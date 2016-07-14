@@ -3,7 +3,6 @@
 #include <string.h>
 #include <stdio.h>
 #include "../deps/rmutil/vector.h"
-#include "vector_util.h"
 #include "rmalloc.h"
 
 Node *__newNode(NodeType t) {
@@ -354,8 +353,8 @@ static inline void _serializerPush(NodeSerializerStack *s, const Node *n) {
 // serializer stack push
 static inline void _serializerPop(NodeSerializerStack *s) {
     s->level--;
-    Vector_Pop(s->nodes);
-    Vector_Pop(s->indices);
+    Vector_Pop(s->nodes, NULL);
+    Vector_Pop(s->indices, NULL);
 }
 
 #define _maskenabled(n, x) ((int)(n ? n->type : N_NULL) & x)

@@ -1,16 +1,13 @@
 #include "object_type.h"
 #include "object.h"
 #include "../deps/rmutil/vector.h"
-#include "vector_util.h"
 #include <string.h>
 
 #ifndef IS_REDIS_MODULE
 #pragma GCC error "object_type must be compiled as a Redis module"
 #endif
 
-// Without externs the module doesn't load
-extern inline int Vector_Size(Vector *v);
-extern inline int Vector_Cap(Vector *v);
+#define Vector_Last(v) Vector_Size(v) - 1
 
 // States of loading an object
 typedef enum { S_INIT, S_BEGIN_VALUE, S_END_VALUE, S_CONTAINER, S_END } ObjectLoadState;
@@ -28,9 +25,9 @@ void *ObjectTypeRdbLoad(RedisModuleIO *rdb) {
 
     while (S_END != state) {
         switch (state) {
-            case S_INIT:    // Initial state
-                nodes  = NewVector(Node *, 1);
-                indices =  NewVector(uint64_t, 1);
+            case S_INIT:  // Initial state
+                nodes = NewVector(Node *, 1);
+                indices = NewVector(uint64_t, 1);
                 type = RedisModule_LoadUnsigned(rdb);
                 state = S_BEGIN_VALUE;
                 break;
@@ -61,7 +58,7 @@ void *ObjectTypeRdbLoad(RedisModuleIO *rdb) {
                     case N_KEYVAL:
                         str = RedisModule_LoadStringBuffer(rdb, &strlen);
                         Vector_Push(nodes, NewKeyValNode(str, strlen, NULL));
-                        Vector_Push(indices, (uint64_t) 1);
+                        Vector_Push(indices, (uint64_t)1);
                         state = S_CONTAINER;
                         break;
                     case N_DICT:
@@ -79,7 +76,7 @@ void *ObjectTypeRdbLoad(RedisModuleIO *rdb) {
                 }  // switch (type)
                 break;
             case S_END_VALUE:
-                if (Vector_Size(nodes)) {   // in case the new node has a parent
+                if (Vector_Size(nodes)) {  // in case the new node has a parent
                     Node *container;
                     Vector_Get(nodes, Vector_Last(nodes), &container);
                     switch (container->type) {  // add it
@@ -106,12 +103,12 @@ void *ObjectTypeRdbLoad(RedisModuleIO *rdb) {
                     type = RedisModule_LoadUnsigned(rdb);
                     state = S_BEGIN_VALUE;
                 } else {
-                    Vector_Pop(indices);
-                    node = Vector_Pop(nodes);
+                    Vector_Pop(indices, NULL);
+                    Vector_Pop(nodes, &node);
                     state = S_END_VALUE;
                 }
                 break;
-            case S_END: // keeps the compiler from complaining
+            case S_END:  // keeps the compiler from complaining
                 break;
         }  // switch (state)
     }      //    while (S_END != state)
@@ -151,12 +148,11 @@ void _ObjectTypeSave_Begin(Node *n, void *ctx) {
             case N_ARRAY:
                 RedisModule_SaveUnsigned(rdb, n->value.arrval.len);
                 break;
-            case N_NULL:    // keeps the compiler from complaining 
+            case N_NULL:  // keeps the compiler from complaining
                 break;
         }
     }
 }
-
 
 void ObjectTypeRdbSave(RedisModuleIO *rdb, void *value) {
     Node *node = (Node *)value;

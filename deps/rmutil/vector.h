@@ -37,6 +37,9 @@ int __vector_PutPtr(Vector *v, size_t pos, void *elem);
 */
 int Vector_Get(Vector *v, size_t pos, void *ptr);
 
+/* Get the element at the end of the vector, decreasing the size by one */
+int Vector_Pop(Vector *v, void *ptr);
+
 //#define Vector_Getx(v, pos, ptr) pos < v->cap ? 1 : 0; *ptr =
 //*(typeof(ptr))(v->data + v->elemSize*pos)
 
@@ -44,11 +47,13 @@ int Vector_Get(Vector *v, size_t pos, void *ptr);
 * Put an element at pos.
 * Note: If pos is outside the vector capacity, we resize it accordingly
 */
-#define Vector_Put(v, pos, elem) __vector_PutPtr(v, pos, &(typeof(elem)){elem})
+#define Vector_Put(v, pos, elem)                                               \
+  __vector_PutPtr(v, pos, elem ? &(typeof(elem)){elem} : NULL)
 
 /* Push an element at the end of v, resizing it if needed. This macro wraps
  * __vector_PushPtr */
-#define Vector_Push(v, elem) __vector_PushPtr(v, &(typeof(elem)){elem})
+#define Vector_Push(v, elem)                                                   \
+  __vector_PushPtr(v, elem ? &(typeof(elem)){elem} : NULL)
 
 int __vector_PushPtr(Vector *v, void *elem);
 
@@ -56,10 +61,10 @@ int __vector_PushPtr(Vector *v, void *elem);
 int Vector_Resize(Vector *v, size_t newcap);
 
 /* return the used size of the vector, regardless of capacity */
-inline int Vector_Size(Vector *v) { return v->top; }
+int Vector_Size(Vector *v);
 
 /* return the actual capacity */
-inline int Vector_Cap(Vector *v) { return v->cap; }
+int Vector_Cap(Vector *v);
 
 /* free the vector and the underlying data. Does not release its elements if
  * they are pointers*/
