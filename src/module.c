@@ -36,7 +36,7 @@
 #include <string.h>
 
 #define JSONTYPE_ENCODING_VERSION 0
-#define JSONTYPE_NAME "JSON-MERZ"
+#define JSONTYPE_NAME "OBJECT-RL"
 #define RLMODULE_NAME "REJSON"
 #define RLMODULE_VERSION "1.0.0"
 #define RLMODULE_PROTO "1.0"
@@ -94,7 +94,36 @@ static inline int SearchPath_IsRootPath(SearchPath *sp) {
     return (1 == sp->len && NT_ROOT == sp->nodes[0].type);
 }
 
-// == Module commands ==
+// == Module Object commands ==
+/* OBJ.GET <key>
+ *
+ * Returns the RESP representation of the object at 'key'. Because RESP's only container is an
+ * array, object containers are prefixed with a distinctive character indicating their type as
+ * follows:
+ *  '{' means that the following entries are a dictionary
+ *  '[' means that the following entries are an array
+ * Boolean literals and (dictionary key names are simple strings. Strings are always quoted.
+ */
+int ObjectGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    if ((argc != 2)) return RedisModule_WrongArity(ctx);
+    RedisModule_AutoMemory(ctx);
+
+    // key must be empty (reply with null) or an object type
+    RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ | REDISMODULE_WRITE);
+    int type = RedisModule_KeyType(key);
+    if (REDISMODULE_KEYTYPE_EMPTY == type) {
+        RedisModule_ReplyWithNull(ctx);
+        return REDISMODULE_OK;
+    } else if (RedisModule_ModuleTypeGetType(key) != JsonType) {
+        return RedisModule_ReplyWithError(ctx, REDISMODULE_ERRORMSG_WRONGTYPE);
+    }
+
+    Object *objRoot = RedisModule_ModuleTypeGetValue(key);
+    ObjectTypeToRespReply(ctx, objRoot);
+    return REDISMODULE_OK;
+}
+
+// == Module JSON commands ==
 /* JSON.SET <key> <path> <json> [SCHEMA <schema-key>]
  * Reply: OK
 */
@@ -214,9 +243,9 @@ error:
     return REDISMODULE_ERR;
 }
 
-/* JSON.GET <key> INDENT <indentation-string>] [NEWLINE <newline-string>] [SPACE
- * <space-string>] [<path>]
- * if path not given, defaults to root
+/* JSON.GET <key> [INDENT <indentation-string>] [NEWLINE <newline-string>] [SPACE <space-string>]
+ *                [<path>]
+ * Path must be last. If path not given, defaults to root.
  * INDENT: indentation string
  * NEWLINE: newline string
  * SPACE: space string
@@ -226,7 +255,7 @@ int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     if ((argc < 2)) return RedisModule_WrongArity(ctx);
     RedisModule_AutoMemory(ctx);
 
-    // key must be empty (reply with null) or a JSON type
+    // key must be empty (reply with null) or a an object type
     RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ | REDISMODULE_WRITE);
     int type = RedisModule_KeyType(key);
     if (REDISMODULE_KEYTYPE_EMPTY == type) {
@@ -279,7 +308,7 @@ int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     }
 
     Object *objRoot = RedisModule_ModuleTypeGetValue(key);
-    Object *objTarget;  // the node targetted for replacement
+    Object *objTarget;  // the node targetted for retrieval
 
     if (!SearchPath_IsRootPath(&sp)) {
         PathError pe = SearchPath_Find(&sp, objRoot, &objTarget);
@@ -455,7 +484,12 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx) {
                                           JSONTypeRdbLoad, ObjectTypeRdbSave, JSONTypeAofRewrite,
                                           ObjectTypeDigest, ObjectTypeFree);
 
-    // /* Main commands. */
+    /* Object commands. */
+    if (RedisModule_CreateCommand(ctx, "obj.get", ObjectGet_RedisCommand, "readonly", 1, 1, 1) ==
+        REDISMODULE_ERR)
+        return REDISMODULE_ERR;
+
+    /* Main commands. */
     if (RedisModule_CreateCommand(ctx, "json.set", JSONSet_RedisCommand,
                                   "write deny-oom getkeys-api", 0, 0, 0) == REDISMODULE_ERR)
         return REDISMODULE_ERR;

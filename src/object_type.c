@@ -9,9 +9,6 @@
 
 #define Vector_Last(v) Vector_Size(v) - 1
 
-// States of loading an object
-typedef enum { S_INIT, S_BEGIN_VALUE, S_END_VALUE, S_CONTAINER, S_END } ObjectLoadState;
-
 void *ObjectTypeRdbLoad(RedisModuleIO *rdb) {
     // IMPORTANT: no encoding version check here, this is up to the calller
     Vector *nodes;
@@ -21,7 +18,7 @@ void *ObjectTypeRdbLoad(RedisModuleIO *rdb) {
     uint64_t type;
     size_t strlen;
     char *str;
-    ObjectLoadState state = S_INIT;
+    enum { S_INIT, S_BEGIN_VALUE, S_END_VALUE, S_CONTAINER, S_END } state = S_INIT;
 
     while (S_END != state) {
         switch (state) {
@@ -169,4 +166,49 @@ void ObjectTypeDigest(RedisModuleDigest *digest, void *value) {
 
 void ObjectTypeFree(void *value) {
     if (value) Node_Free(value);
+}
+
+void _ObjectTypeToResp_Begin(Node *n, void *ctx) {
+    RedisModuleCtx *rctx = (RedisModuleCtx *)ctx;
+
+    if (!n) {
+        RedisModule_ReplyWithNull(ctx);
+    } else {
+        switch (n->type) {
+            case N_BOOLEAN:
+                RedisModule_ReplyWithSimpleString(ctx, n->value.boolval ? "true" : "false");
+                break;
+            case N_INTEGER:
+                RedisModule_ReplyWithLongLong(ctx, n->value.intval);
+                break;
+            case N_NUMBER:
+                RedisModule_ReplyWithDouble(ctx, n->value.numval);
+                break;
+            case N_STRING:
+                RedisModule_ReplyWithStringBuffer(ctx, n->value.strval.data, n->value.strval.len);
+                break;
+            case N_KEYVAL:
+                RedisModule_ReplyWithArray(ctx, 2);
+                RedisModule_ReplyWithSimpleString(ctx, n->value.kvval.key);
+                break;
+            case N_DICT:
+                RedisModule_ReplyWithArray(ctx, n->value.dictval.len + 1);
+                RedisModule_ReplyWithSimpleString(ctx, "{");
+                break;
+            case N_ARRAY:
+                RedisModule_ReplyWithArray(ctx, n->value.arrval.len + 1);
+                RedisModule_ReplyWithSimpleString(ctx, "[");
+                break;
+            case N_NULL:  // keeps the compiler from complaining
+                break;
+        }
+    }
+}
+
+void ObjectTypeToRespReply(RedisModuleCtx *ctx, Node *node) {
+    NodeSerializerOpt nso = {0};
+
+    nso.fBegin = _ObjectTypeToResp_Begin;
+    nso.xBegin = 0xff;  // mask for all basic types
+    Node_Serializer(node, &nso, ctx);
 }
