@@ -57,6 +57,7 @@ set_target_properties(rejson PROPERTIES PREFIX "" C_VISIBILITY_PRESET hidden LIN
 target_include_directories(rejson PUBLIC src PUBLIC deps/rmutil)
 target_compile_definitions(rejson PUBLIC IS_REDIS_MODULE)
 target_link_libraries(rejson rm_object rm_json_object m)
+add_test(NAME redis_module COMMAND ${CMAKE_MAKE_PROGRAM} -C ${CMAKE_CURRENT_SOURCE_DIR}/test/pytest)
 
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})
 set(CPACK_PROJECT_VERSION ${PROJECT_VERSION})
