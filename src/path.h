@@ -1,6 +1,10 @@
 #ifndef __PATH_H__
 #define __PATH_H__
+
+#include <string.h>
+#include <sys/param.h>
 #include "object.h"
+#include "rmalloc.h"
 
 /* The type of a path node */
 typedef enum {

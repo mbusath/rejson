@@ -1,8 +1,10 @@
 #ifndef __OBJECT_TYPE_H__
 #define __OBJECT_TYPE_H__
 
-#include "redismodule.h"
+#include <string.h>
+#include "../deps/rmutil/vector.h"
 #include "object.h"
+#include "redismodule.h"
 
 /* Custom Redis data type API. */
 void *ObjectTypeRdbLoad(RedisModuleIO *rdb);

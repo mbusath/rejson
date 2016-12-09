@@ -1,6 +1,4 @@
 #include "json_path.h"
-#include <string.h>
-#include "rmalloc.h"
 
 int _tokenizePath(const char *json, size_t len, SearchPath *path) {
     tokenizerState st = S_NULL;

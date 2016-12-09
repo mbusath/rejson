@@ -1,7 +1,4 @@
 #include "object_type.h"
-#include "object.h"
-#include "../deps/rmutil/vector.h"
-#include <string.h>
 
 #ifndef IS_REDIS_MODULE
 #pragma GCC error "object_type must be compiled as a Redis module"

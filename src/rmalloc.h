@@ -2,6 +2,7 @@
 #define __RM_ALLOC__
 
 #include <stdlib.h>
+#include <string.h>
 
 #ifdef IS_REDIS_MODULE
 #include "redismodule.h"
@@ -14,7 +15,7 @@
 
 /* More overriding */
 // needed to avoid calling strndup->malloc
-#define strndup(s,n) rmalloc_strndup(s,n)
+#define strndup(s, n) rmalloc_strndup(s, n)
 char *rmalloc_strndup(const char *s, size_t n);
 #endif /* IS_REDIS_MODULE */
 

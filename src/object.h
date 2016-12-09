@@ -1,7 +1,12 @@
 #ifndef __OBJECT_H__
 #define __OBJECT_H__
 
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/param.h>
+#include "../deps/rmutil/vector.h"
+#include "rmalloc.h"
 
 // Return code from successful ops
 #define OBJ_OK 0
@@ -12,7 +17,7 @@
 * NodeType represents the type of a node in an object.
 */
 typedef enum {
-    N_NULL = 0x1,       // only used in masks
+    N_NULL = 0x1,  // only used in masks
     N_STRING = 0x2,
     N_NUMBER = 0x4,
     N_INTEGER = 0x8,
@@ -187,7 +192,7 @@ typedef struct {
     NodeSerializerValue fBegin;      // begin node serializer callback
     NodeSerializerValue fEnd;        // end node serializer callback
     NodeSerializerContainer fDelim;  // container node delimiter callback
-    int xBegin, xEnd, xDelim;        // node type bitmasks 
+    int xBegin, xEnd, xDelim;        // node type bitmasks
 } NodeSerializerOpt;
 
 /**

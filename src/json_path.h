@@ -1,8 +1,11 @@
 #ifndef __JSON_PATH_H__
 #define __JSON_PATH_H__
-#include <stdio.h>
+
 #include <ctype.h>
+#include <stdio.h>
+#include <string.h>
 #include "path.h"
+#include "rmalloc.h"
 
 #define PARSE_OK 0
 #define PARSE_ERR 1

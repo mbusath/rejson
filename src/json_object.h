@@ -1,9 +1,13 @@
 #ifndef __JSON_OBJECT_H__
 #define __JSON_OBJECT_H__
 
+#include <float.h>
+#include <math.h>
 #include <stdlib.h>
-#include "object.h"
 #include "../deps/rmutil/sds.h"
+#include "jsonsl.h"
+#include "object.h"
+#include "rmalloc.h"
 
 #define JSONOBJECT_OK 0
 #define JSONOBJECT_ERROR 1

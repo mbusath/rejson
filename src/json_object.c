@@ -1,8 +1,4 @@
 #include "json_object.h"
-#include "jsonsl.h"
-#include <float.h>
-#include <math.h>
-#include "rmalloc.h"
 /* Open issues:
 - move jsonsl to deps
 - move include files to include

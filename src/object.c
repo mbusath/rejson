@@ -1,9 +1,4 @@
 #include "object.h"
-#include <sys/param.h>
-#include <string.h>
-#include <stdio.h>
-#include "../deps/rmutil/vector.h"
-#include "rmalloc.h"
 
 Node *__newNode(NodeType t) {
     Node *ret = malloc(sizeof(Node));
