@@ -26,14 +26,14 @@
 #pragma GCC error "rejson must be compiled as a Redis module"
 #endif
 
-#include "redismodule.h"
-#include "object.h"
-#include "object_type.h"
+#include <string.h>
+#include "../deps/rmutil/sds.h"
+#include "../deps/rmutil/util.h"
 #include "json_object.h"
 #include "json_path.h"
-#include "../deps/rmutil/util.h"
-#include "../deps/rmutil/sds.h"
-#include <string.h>
+#include "object.h"
+#include "object_type.h"
+#include "redismodule.h"
 
 #define JSONTYPE_ENCODING_VERSION 0
 #define JSONTYPE_NAME "OBJECT-RL"
@@ -124,15 +124,13 @@ int ObjectGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
 }
 
 // == Module JSON commands ==
-/* JSON.SET <key> <path> <json> [SCHEMA <schema-key>]
+/* JSON.SET <key> <path> <json>
  * Reply: OK
 */
 int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     // check args
     if ((argc < 4) || (argc > 6)) return RedisModule_WrongArity(ctx);
     RedisModule_AutoMemory(ctx);
-
-    // TODO: handle getkeys-api request due to SCHEMA being an optional arg
 
     // key must be empty or a JSON type
     RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ | REDISMODULE_WRITE);
@@ -480,9 +478,14 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx) {
     if (RedisModule_Init(ctx, RLMODULE_NAME, 1, REDISMODULE_APIVER_1) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
-    JsonType = RedisModule_CreateDataType(ctx, JSONTYPE_NAME, JSONTYPE_ENCODING_VERSION,
-                                          JSONTypeRdbLoad, ObjectTypeRdbSave, JSONTypeAofRewrite,
-                                          ObjectTypeDigest, ObjectTypeFree);
+    RedisModuleTypeMethods tm = {
+        .version = REDISMODULE_TYPE_METHOD_VERSION,
+        .rdb_load = JSONTypeRdbLoad,
+        .rdb_save = ObjectTypeRdbSave,
+        .aof_rewrite = JSONTypeAofRewrite,
+        .free = ObjectTypeFree
+    };
+    JsonType = RedisModule_CreateDataType(ctx, JSONTYPE_NAME, JSONTYPE_ENCODING_VERSION, &tm);
 
     /* Object commands. */
     if (RedisModule_CreateCommand(ctx, "obj.get", ObjectGet_RedisCommand, "readonly", 1, 1, 1) ==
@@ -490,8 +493,8 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx) {
         return REDISMODULE_ERR;
 
     /* Main commands. */
-    if (RedisModule_CreateCommand(ctx, "json.set", JSONSet_RedisCommand,
-                                  "write deny-oom getkeys-api", 0, 0, 0) == REDISMODULE_ERR)
+    if (RedisModule_CreateCommand(ctx, "json.set", JSONSet_RedisCommand, "write deny-oom", 1, 1,
+                                  1) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
     if (RedisModule_CreateCommand(ctx, "json.get", JSONGet_RedisCommand, "readonly", 1, 1, 1) ==

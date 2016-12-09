@@ -160,10 +160,6 @@ void ObjectTypeRdbSave(RedisModuleIO *rdb, void *value) {
     Node_Serializer(node, &nso, rdb);
 }
 
-void ObjectTypeDigest(RedisModuleDigest *digest, void *value) {
-    // TODO: once digest is impelemented.
-}
-
 void ObjectTypeFree(void *value) {
     if (value) Node_Free(value);
 }

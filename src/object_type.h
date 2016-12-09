@@ -7,7 +7,6 @@
 /* Custom Redis data type API. */
 void *ObjectTypeRdbLoad(RedisModuleIO *rdb);
 void ObjectTypeRdbSave(RedisModuleIO *rdb, void *value);
-void ObjectTypeDigest(RedisModuleDigest *digest, void *value);
 void ObjectTypeFree(void *value);
 
 /* Replies with a RESP representation of the node. */
