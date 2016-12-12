@@ -55,23 +55,20 @@ PathError SearchPath_FindEx(SearchPath *path, Node *root, Node **n, Node **p, in
     PathError ret;
 
     for (int i = 0; i < path->len; i++) {
-        next = __pathNode_eval(&path->nodes[i], current, &ret);
+        prev = current;
+        current = __pathNode_eval(&path->nodes[i], current, &ret);
         if (ret != E_OK) {
             *errnode = i;
             switch (ret) {
                 case E_NOKEY:
-                    *p = i ? prev : root;
-                    break;
                 case E_NOINDEX:
-                    *p = current;
+                    *p = prev;
                     break;
                 default:
                     break;
             }
             return ret;
         }
-        prev = current;
-        current = next;
     }
     *p = prev;
     *n = current;

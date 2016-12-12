@@ -125,7 +125,20 @@ int ObjectGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
 
 // == Module JSON commands ==
 /* JSON.SET <key> <path> <json>
- * Reply: OK
+ * Creates or updates the JSON object in `key`
+ * Paths always begin at the root (`.`). For paths referencing anything deeper than the root, the
+ * starting `.`is optional.
+ * Any path from the root begins with a key token. Key tokens are specfied by name and are separated
+ * by dots, or with assoicative array syntax: `.foo.bar` and `foo["bar"]` both refer to the key
+ * `bar` in the dictionary `foo`.
+ * Tokens can also be elements from lists and are specified by their 0-based index in brackets (e.g.
+ * `.arr[1]`). Negative index values are treated as is with Python's lists.
+ * For new keys, `path` must be the root and `json` must be a JSON object.
+ * For existing keys, when the entire  `path` exists, the value it contains is replaced with the
+ * `json` value. A key with the value is created when only the last token in the path isn't resolved
+ * and its parent is a dictionary. An value is prepended or appended to the parent array if the
+ * missing last token is `-inf` or `+inf`, respectively.
+ * Reply: Simple string
 */
 int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     // check args
@@ -193,19 +206,27 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
         if (!SearchPath_IsRootPath(&sp)) {  // anything but the root
             int errlevel = 0;
             PathError pe = SearchPath_FindEx(&sp, objRoot, &objTarget, &objParent, &errlevel);
-            if (E_OK != pe) {
-                if (E_BADTYPE == pe) {
+            switch (pe) {
+                case E_OK:
+                    break;
+                case E_BADTYPE:
                     RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_BADTYPE);
                     goto error;
-                }
-                // E_NOKEY and E_NOINDEX handling depends on the level - a terminal node is created
-                // while the others err
-                if (errlevel != sp.len - 1) {
-                    RedisModule_ReplyWithError(
-                        ctx, pe == E_NOKEY ? REJSON_ERROR_PATH_NOKEY : REJSON_ERROR_PATH_NOINDEX);
-                    goto error;
-                }
-            }  // if (E_OK != pe)
+                    break;
+                case E_NOKEY:
+                case E_NOINDEX:
+                    // E_NOKEY and E_NOINDEX handling depends on the level - a terminal node is
+                    // created while the others err
+                    if (errlevel != sp.len - 1) {
+                        RedisModule_ReplyWithError(ctx, pe == E_NOKEY ? REJSON_ERROR_PATH_NOKEY
+                                                                      : REJSON_ERROR_PATH_NOINDEX);
+                        goto error;
+                    }
+                    break;
+                default:
+                    RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_UNKNOWN);
+                    break;
+            }  // switch (pe)
 
             // replace or create target
             if (N_DICT == objParent->type) {
@@ -290,6 +311,9 @@ int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
             jsopt.spacestr = "";
         }
     }
+
+    // verify that 0 or 1 paths were provided
+    if (argc - pathpos > 1) return RedisModule_WrongArity(ctx);
 
     // path must be valid, if not provided default to root
     size_t pathlen;
@@ -439,13 +463,12 @@ int JSONDel_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
                     deleted++;
                 }
             } else {  // must be an array
-                      // TODO: delete from array?
-                // if (OBJ_OK != Node_ArrayDel(objParent, sp[i].nodes[sp[i].len - 1].value.index)) {
-                //     RedisModule_ReplyWithError(ctx, REJSON_ERROR_ARRAY_DEL);
-                //     goto error;
-                // } else {
-                //     deleted++;
-                // }
+                if (OBJ_OK != Node_ArrayDel(objParent, sp[i].nodes[sp[i].len - 1].value.index)) {
+                    RedisModule_ReplyWithError(ctx, REJSON_ERROR_ARRAY_DEL);
+                    goto error;
+                } else {
+                    deleted++;
+                }
             }
         }  // for (int i = 0; i < npaths; i++)
     }      // else
@@ -480,13 +503,11 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx) {
         return REDISMODULE_ERR;
 
     // Register the JSON data type
-    RedisModuleTypeMethods tm = {
-        .version = REDISMODULE_TYPE_METHOD_VERSION,
-        .rdb_load = JSONTypeRdbLoad,
-        .rdb_save = ObjectTypeRdbSave,
-        .aof_rewrite = JSONTypeAofRewrite,
-        .free = ObjectTypeFree
-    };
+    RedisModuleTypeMethods tm = {.version = REDISMODULE_TYPE_METHOD_VERSION,
+                                 .rdb_load = JSONTypeRdbLoad,
+                                 .rdb_save = ObjectTypeRdbSave,
+                                 .aof_rewrite = JSONTypeAofRewrite,
+                                 .free = ObjectTypeFree};
     JsonType = RedisModule_CreateDataType(ctx, JSONTYPE_NAME, JSONTYPE_ENCODING_VERSION, &tm);
 
     /* Object commands. */

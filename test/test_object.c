@@ -183,16 +183,22 @@ MU_TEST(testPath) {
 
 MU_TEST(testPathEx) {
     Node *root = NewDictNode(1);
-    mu_check(root != NULL);
+    mu_check(NULL != root);
 
     mu_check(OBJ_OK == Node_DictSet(root, "foo", NewStringNode("bar", 3)));
     mu_check(OBJ_OK == Node_DictSet(root, "bar", NewBoolNode(0)));
 
     Node *arr = NewArrayNode(0);
-    Node_ArrayAppend(arr, NewStringNode("hello", 5));
-    Node_ArrayAppend(arr, NewStringNode("world", 5));
+    mu_check(NULL != arr);
+    mu_check(OBJ_OK == Node_ArrayAppend(arr, NewStringNode("hello", 5)));
+    mu_check(OBJ_OK == Node_ArrayAppend(arr, NewStringNode("world", 5)));
+    mu_check(OBJ_OK == Node_DictSet(root, "arr", arr));
 
-    mu_check(OBJ_OK == Node_DictSet(root, "baz", arr));
+    Node *dict = NewDictNode(0);
+    mu_check(NULL != dict);
+    mu_check(OBJ_OK == Node_DictSet(dict, "f1", NULL));
+    mu_check(OBJ_OK == Node_DictSet(dict, "f2", NewIntNode(6379)));
+    mu_check(OBJ_OK == Node_DictSet(root, "dict", dict));
 
     Node *n = NULL;
     Node *p = NULL;
@@ -202,7 +208,7 @@ MU_TEST(testPathEx) {
 
     // sanity of a valid path
     sp = NewSearchPath(2);
-    SearchPath_AppendKey(&sp, "baz", 3);
+    SearchPath_AppendKey(&sp, "arr", 3);
     SearchPath_AppendIndex(&sp, 0);
     pe = SearchPath_FindEx(&sp, root, &n, &p, &errlevel);
     mu_check(pe == E_OK);
@@ -213,7 +219,7 @@ MU_TEST(testPathEx) {
     mu_check(!strcmp(n->value.strval.data, "hello"));
     SearchPath_Free(&sp);
 
-    // check for non existing key
+    // check for non existing key in root
     sp = NewSearchPath(1);
     SearchPath_AppendKey(&sp, "qux", 3);
     pe = SearchPath_FindEx(&sp, root, &n, &p, &errlevel);
@@ -221,6 +227,17 @@ MU_TEST(testPathEx) {
     mu_check(0 == errlevel);
     mu_check(p == root);
     SearchPath_Free(&sp);
+
+    // check for non existing key in sub dictionary
+    sp = NewSearchPath(2);
+    SearchPath_AppendKey(&sp, "dict", 4);
+    SearchPath_AppendKey(&sp, "f0", 2);
+    pe = SearchPath_FindEx(&sp, root, &n, &p, &errlevel);
+    mu_check(E_NOKEY == pe);
+    mu_check(1 == errlevel);
+    mu_check(p == dict);
+    SearchPath_Free(&sp);
+
 
     // bad type
     sp = NewSearchPath(2);
@@ -233,7 +250,7 @@ MU_TEST(testPathEx) {
 
     // check for non existing index
     sp = NewSearchPath(2);
-    SearchPath_AppendKey(&sp, "baz", 3);
+    SearchPath_AppendKey(&sp, "arr", 3);
     SearchPath_AppendIndex(&sp, 99);
     pe = SearchPath_FindEx(&sp, root, &n, &p, &errlevel);
     mu_check(E_NOINDEX == pe);
