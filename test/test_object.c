@@ -245,13 +245,13 @@ MU_TEST(testPathEx) {
 }
 
 MU_TEST(testPathParse) {
-    const char *path = "foo.bar[3][\"baz\"].bar[\"boo\"][\"\"]";
+    const char *path = "foo.bar[3][\"baz\"].bar[\"boo\"][\"\"][6379]";
 
     SearchPath sp = NewSearchPath(0);
     int rc = ParseJSONPath(path, strlen(path), &sp);
     mu_assert_int_eq(rc, PARSE_OK);
 
-    mu_assert_int_eq(sp.len, 7);
+    mu_assert_int_eq(sp.len, 8);
 
     mu_check(!strcmp(sp.nodes[0].value.key, "foo"));
     mu_check(!strcmp(sp.nodes[1].value.key, "bar"));
@@ -260,19 +260,17 @@ MU_TEST(testPathParse) {
     mu_check(!strcmp(sp.nodes[4].value.key, "bar"));
     mu_check(!strcmp(sp.nodes[5].value.key, "boo"));
     mu_check(!strcmp(sp.nodes[6].value.key, ""));
+    mu_check(sp.nodes[7].value.index == 6379);
 
-    const char *badpaths[] = {"3",        "foo[bar]",   "foo[]",   "foo[3", "bar[\"]",
-                              "foo..bar", "foo['bar']", "foo/bar", NULL};
+    const char *badpaths[] = {"3",       "6379",        "foo[bar]",     "foo[]",
+                              "foo[3",   "bar[\"]",     "foo..bar",     "foo['bar']",
+                              "foo/bar", "foo.bar[-1]", "foo.bar[1.1]", NULL};
 
     for (int idx = 0; badpaths[idx] != NULL; idx++) {
-        // printf("%s\n", badpaths[idx]);
         mu_check(ParseJSONPath(badpaths[idx], strlen(badpaths[idx]), &sp) == PARSE_ERR);
     }
 
     SearchPath_Free(&sp);
-
-    // mu_assert_int_eq (rc, PARSE_OK);
-    // printf("sp len: %zd\n", sp.len);
 }
 
 MU_TEST(testPathParseRoot) {

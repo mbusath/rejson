@@ -66,7 +66,7 @@ int _tokenizePath(const char *json, size_t len, SearchPath *path) {
             case S_NUMBER:
                 if (isdigit(c)) {
                     tok.len++;
-                    continue;
+                    break;
                 }
                 if (c == ']') {
                     st = S_NULL;
