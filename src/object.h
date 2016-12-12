@@ -1,6 +1,7 @@
 #ifndef __OBJECT_H__
 #define __OBJECT_H__
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -29,6 +30,8 @@ typedef enum {
     // N_BINARY = 0x200
 } NodeType;
 
+#define NODE_IS_SCALAR(n) (!n ? 1 : (int)(n->type & (N_STRING | N_NUMBER | N_INTEGER | N_BOOLEAN)))
+
 struct t_node;
 
 /*
@@ -36,7 +39,7 @@ struct t_node;
 */
 typedef struct {
     const char *data;
-    u_int32_t len;
+    uint32_t len;
 } t_string;
 
 /*
@@ -44,8 +47,8 @@ typedef struct {
 */
 typedef struct {
     struct t_node **entries;
-    u_int32_t len;
-    u_int32_t cap;
+    uint32_t len;
+    uint32_t cap;
 } t_array;
 
 /*
@@ -64,8 +67,8 @@ typedef struct {
 */
 typedef struct {
     struct t_node **entries;
-    u_int32_t len;
-    u_int32_t cap;
+    uint32_t len;
+    uint32_t cap;
 } t_dict;
 
 /*
@@ -104,7 +107,7 @@ Node *NewIntNode(int64_t val);
 * Create a new string node with the given c-string and its length.
 * NOTE: The string's value will be copied to a newly allocated string
 */
-Node *NewStringNode(const char *s, u_int32_t len);
+Node *NewStringNode(const char *s, uint32_t len);
 
 /**
 * Create a new string node from a NULL terminated c-string. #ifdef 0
@@ -117,23 +120,38 @@ Node *NewCStringNode(const char *su);
 * to a Node as value.
 * NOTE: The string's value will be copied to a newly allocated string
 */
-Node *NewKeyValNode(const char *key, u_int32_t len, Node *n);
+Node *NewKeyValNode(const char *key, uint32_t len, Node *n);
 
 /** Create a new zero length array node with the given capacity */
-Node *NewArrayNode(u_int32_t cap);
+Node *NewArrayNode(uint32_t cap);
 
 /** Create a new dict node with the given capacity */
-Node *NewDictNode(u_int32_t cap);
+Node *NewDictNode(uint32_t cap);
 
 /** Free a node, and if needed free its allocated data and its children recursively */
 void Node_Free(Node *n);
 
-/** Pretty-pring a node. Not JSON compliant but will produce something almost JSON-ish */
+/** Reports the length of the node's value if defined. Return a positive integer, and -1 otherwise.
+ */
+int Node_Length(const Node *n);
+
+/** Pretty-print a node. Not JSON compliant but will produce something almost JSON-ish */
 void Node_Print(Node *n, int depth);
 
-/** Append a node to an array node. If needed the array's internal list of children will be resized
- */
+/** Deletes (and frees) the node from an array at index. */
+int Node_ArrayDel(Node *arr, int index);
+
+/** Insert a node to an array before the node at index. If the index is geq the array's' length the
+ * node is appended to the end of the array. Negative index values are interpreted as beginning from
+ * the end.*/
+int Node_ArrayInsert(Node *arr, int index, Node *n);
+
+/** Append a node to an array node. */
 int Node_ArrayAppend(Node *arr, Node *n);
+
+/** Append the source array's nodes to an the destination array.
+ * NOTE: only node references are copied, so the source array is emptied. */
+int Node_ArrayExtend(Node *dst, Node *src);
 
 /**
 * Set an array's member at a given index to a new node.
@@ -143,9 +161,15 @@ int Node_ArraySet(Node *arr, int index, Node *n);
 
 /**
 * Retrieve an array item into Node n's pointer by index
-* Returns OBJ_ERR if the index is outof range
+* Returns OBJ_ERR if the index is out of range
 */
 int Node_ArrayItem(Node *arr, int index, Node **n);
+
+/** Returns the index of the scalar n in arr between indices start and stop. Index values can be
+* negative.
+* Returns the index of of the value if found, -1 if n is not a scalar or not found
+*/
+int Node_ArrayIndex(Node *arr, Node *n, int start, int stop);
 
 /**
 * Set an item in a dictionary for a given key.

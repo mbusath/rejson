@@ -475,9 +475,11 @@ int TestModule(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
 
 int RedisModule_OnLoad(RedisModuleCtx *ctx) __attribute__((visibility("default")));
 int RedisModule_OnLoad(RedisModuleCtx *ctx) {
+    // Register the module
     if (RedisModule_Init(ctx, RLMODULE_NAME, 1, REDISMODULE_APIVER_1) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
+    // Register the JSON data type
     RedisModuleTypeMethods tm = {
         .version = REDISMODULE_TYPE_METHOD_VERSION,
         .rdb_load = JSONTypeRdbLoad,

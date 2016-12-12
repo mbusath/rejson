@@ -24,7 +24,7 @@ Node *NewIntNode(int64_t val) {
     return ret;
 }
 
-Node *NewStringNode(const char *s, u_int32_t len) {
+Node *NewStringNode(const char *s, uint32_t len) {
     Node *ret = __newNode(N_STRING);
     ret->value.strval.data = strndup(s, len);
     ret->value.strval.len = len;
@@ -33,14 +33,14 @@ Node *NewStringNode(const char *s, u_int32_t len) {
 
 Node *NewCStringNode(const char *s) { return NewStringNode(s, strlen(s)); }
 
-Node *NewKeyValNode(const char *key, u_int32_t len, Node *n) {
+Node *NewKeyValNode(const char *key, uint32_t len, Node *n) {
     Node *ret = __newNode(N_KEYVAL);
     ret->value.kvval.key = strndup(key, len);
     ret->value.kvval.val = n;
     return ret;
 }
 
-Node *NewArrayNode(u_int32_t cap) {
+Node *NewArrayNode(uint32_t cap) {
     Node *ret = __newNode(N_ARRAY);
     ret->value.arrval.cap = cap;
     ret->value.arrval.len = 0;
@@ -48,7 +48,7 @@ Node *NewArrayNode(u_int32_t cap) {
     return ret;
 }
 
-Node *NewDictNode(u_int32_t cap) {
+Node *NewDictNode(uint32_t cap) {
     Node *ret = __newNode(N_DICT);
     ret->value.dictval.cap = cap;
     ret->value.dictval.len = 0;
@@ -77,6 +77,7 @@ void __node_FreeArr(Node *n) {
     free(n->value.arrval.entries);
     free(n);
 }
+
 void __node_FreeString(Node *n) {
     free((char *)n->value.strval.data);
     free(n);
@@ -104,13 +105,107 @@ void Node_Free(Node *n) {
     }
 }
 
+int Node_Length(const Node *n) {
+    // Length is only defined for arrays, dictionaries and strings
+    if (n) {
+        switch (n->type) {
+            case N_ARRAY:
+                return n->value.arrval.len;
+                break;
+            case N_DICT:
+                return n->value.dictval.len;
+                break;
+            case N_STRING:
+                return n->value.strval.len;
+                break;
+            default:
+                break;
+        }
+    }
+
+    return -1;
+}
+
+int Node_ArrayDel(Node *arr, int index) {
+    t_array *a = &arr->value.arrval;
+
+    // invalid index!
+    if (index < 0 || index >= a->len) {
+        return OBJ_ERR;
+    }
+
+    Node_Free(a->entries[index]);
+    memmove(&a->entries[index], &a->entries[index + 1], (a->len - index - 1) * sizeof(Node *));
+    a->len--;
+
+    return OBJ_OK;
+}
+
+/* Enlarge the capacity of an array to hold at least its current length + addlen. */
+void __node_ArrayMakeRoomFor(Node *arr, uint32_t addlen) {
+    t_array *a = &arr->value.arrval;
+    uint32_t newcap = a->len + addlen;
+
+    // Nothing to do if enough capacity is already available
+    if (a->cap >= newcap) return;
+
+    /* Find a reasonable next capacity.
+    * For small numbers we grow to the next power of 2:
+    * http://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
+    */
+    uint32_t nextcap = newcap;
+    nextcap--;
+    nextcap |= nextcap >> 1;
+    nextcap |= nextcap >> 2;
+    nextcap |= nextcap >> 4;
+    nextcap |= nextcap >> 8;
+    nextcap |= nextcap >> 16;
+    nextcap++;
+
+    // For larger capacities, e.g. 1MB, we chunk it.
+    const uint32_t CHUNK_SIZE = 1 << 20;
+    if (nextcap > CHUNK_SIZE) {
+        nextcap = ((newcap / CHUNK_SIZE) + 1) * CHUNK_SIZE;
+    }
+
+    a->cap = nextcap;
+    a->entries = realloc(a->entries, a->cap * sizeof(Node *));
+}
+
+int Node_ArrayInsert(Node *arr, int index, Node *n) {
+    t_array *a = &arr->value.arrval;
+
+    // Translate negative index value
+    if (index < 0) {
+        index = MAX(0, (int)a->len + index);
+    }
+
+    __node_ArrayMakeRoomFor(arr, 1);
+    if (index >= a->len) {  // append
+        a->entries[a->len] = n;
+    } else {  // insert at index
+        memmove(&a->entries[index + 1], &a->entries[index], (a->len - index) * sizeof(Node *));
+        a->entries[index] = n;
+    }
+    a->len++;
+
+    return OBJ_OK;
+}
+
 int Node_ArrayAppend(Node *arr, Node *n) {
     t_array *a = &arr->value.arrval;
-    if (a->len >= a->cap) {
-        a->cap = a->cap ? MIN(a->cap * 2, 1024 * 1024) : 1;
-        a->entries = realloc(a->entries, a->cap * sizeof(Node *));
-    }
-    a->entries[a->len++] = n;
+    return Node_ArrayInsert(arr, a->len, n);
+}
+
+int Node_ArrayExtend(Node *dst, Node *src) {
+    t_array *d = &dst->value.arrval;
+    t_array *s = &src->value.arrval;
+
+    __node_ArrayMakeRoomFor(dst, s->len);
+    memcpy(&d->entries[d->len], s->entries, s->len * sizeof(Node *));
+    d->len += s->len;
+    s->len = 0;
+
     return OBJ_OK;
 }
 
@@ -136,6 +231,69 @@ int Node_ArrayItem(Node *arr, int index, Node **n) {
     }
     *n = a->entries[index];
     return OBJ_OK;
+}
+
+int Node_ArrayIndex(Node *arr, Node *n, int start, int stop) {
+    t_array *a = &arr->value.arrval;
+
+    // Break early for empty arrays or non scalar nodes
+    if (!a->len || !NODE_IS_SCALAR(n)) {
+        return -1;
+    }
+
+    // Translate negative index values
+    if (start < 0) {
+        start = MAX(0, (int)a->len + start);
+    }
+    if (stop < 0) {
+        stop = MAX(0, (int)a->len + stop);
+    }
+
+    // Swap start and stop if OOO
+    if (start > stop) {
+        int t = start;
+        start = stop;
+        stop = t;
+    }
+
+    // Break early if search begins outside the array
+    if (start >= a->len) return -1;
+
+    // Stop searching at stop or at the end of the array
+    stop = MIN(stop + 1, (int)a->len);
+
+    // Search within range
+    for (int i = start; i < stop; i++) {
+        // NULL treatment
+        if (!n && !a->entries[i]) return i;
+        if (!n || !a->entries[i]) continue;
+
+        // No need to compare values if types aren't the same
+        if (a->entries[i]->type != n->type) continue;
+
+        // Check equality per scalar type
+        switch (n->type) {
+            case N_STRING:
+                if ((n->value.strval.len == a->entries[i]->value.strval.len) &&
+                    !strncmp(n->value.strval.data, a->entries[i]->value.strval.data,
+                             n->value.strval.len)) {
+                    return i;
+                }
+                break;
+            case N_NUMBER:
+                if (n->value.numval == a->entries[i]->value.numval) return i;
+                break;
+            case N_INTEGER:
+                if (n->value.intval == a->entries[i]->value.intval) return i;
+                break;
+            case N_BOOLEAN:
+                if (n->value.boolval == a->entries[i]->value.boolval) return i;
+                break;
+            default:
+                break;
+        }   // switch (n->type)
+    }   // for
+    return -1;
 }
 
 Node *__obj_find(t_dict *o, const char *key, int *idx) {

@@ -1,10 +1,124 @@
-#include <stdio.h>
 #include <assert.h>
+#include <stdio.h>
 #include <string.h>
-#include "minunit.h"
-#include "../src/path.h"
-#include "../src/object.h"
 #include "../src/json_path.h"
+#include "../src/object.h"
+#include "../src/path.h"
+#include "minunit.h"
+
+MU_TEST(testNodeArray) {
+    Node *arr, *arr2, *n;
+
+    // Test creation of a typical empty array
+    arr = NewArrayNode(0);
+    mu_check(arr != NULL);
+    mu_assert_int_eq(Node_Length(arr), 0);
+    mu_check(OBJ_ERR == Node_ArrayItem(arr, 0, &n));
+
+    // Test appending and getting a node
+    mu_check(OBJ_OK == Node_ArrayAppend(arr, NewIntNode(42)));
+    mu_assert_int_eq(Node_Length(arr), 1);
+    mu_check(OBJ_ERR == Node_ArrayItem(arr, 1, &n));
+    mu_check(OBJ_OK == Node_ArrayItem(arr, 0, &n));
+    mu_check(NULL != n);
+    mu_check(N_INTEGER == n->type);
+    mu_check(42 == n->value.intval);
+
+    // Delete the element
+    mu_check(OBJ_ERR == Node_ArrayDel(arr, 1));
+    mu_check(OBJ_OK == Node_ArrayDel(arr, 0));
+    mu_check(OBJ_ERR == Node_ArrayItem(arr, 0, &n));
+    mu_assert_int_eq(Node_Length(arr), 0);
+
+    // Test with some more elements
+    Node_Free(arr);
+    arr = NewArrayNode(1);
+    mu_assert_int_eq(Node_Length(arr), 0);
+    mu_check(OBJ_OK == Node_ArrayAppend(arr, NewStringNode("foo", 3)));
+    mu_check(OBJ_OK == Node_ArrayAppend(arr, NewStringNode("bar", 3)));
+    mu_check(OBJ_OK == Node_ArrayAppend(arr, NewStringNode("baz", 3)));
+    mu_assert_int_eq(Node_Length(arr), 3);
+
+    mu_check(OBJ_OK == Node_ArrayItem(arr, 0, &n));
+    mu_check(NULL != n);
+    mu_check(N_STRING == n->type);
+
+    // Test inserting to the list
+    mu_check(OBJ_OK == Node_ArrayInsert(arr, 0, NewBoolNode(0)));
+    mu_assert_int_eq(Node_Length(arr), 4);
+    mu_check(OBJ_OK == Node_ArrayItem(arr, 0, &n));
+    mu_check(NULL != n);
+    mu_check(N_BOOLEAN == n->type);
+
+    mu_check(OBJ_OK == Node_ArrayInsert(arr, 1, NULL));
+    mu_assert_int_eq(Node_Length(arr), 5);
+    mu_check(OBJ_OK == Node_ArrayItem(arr, 1, &n));
+    mu_check(NULL == n);
+
+    mu_check(OBJ_OK == Node_ArrayInsert(arr, 42, NewDoubleNode(2.719)));
+    mu_assert_int_eq(Node_Length(arr), 6);
+    mu_check(OBJ_OK == Node_ArrayItem(arr, 5, &n));
+    mu_check(NULL != n);
+    mu_check(N_NUMBER == n->type);
+
+    mu_check(OBJ_OK == Node_ArrayInsert(arr, -1, NewIntNode(1)));
+    mu_assert_int_eq(Node_Length(arr), 7);
+    mu_check(OBJ_OK == Node_ArrayItem(arr, 5, &n));
+    mu_check(NULL != n);
+    mu_check(N_INTEGER == n->type);
+
+    // Test extending a list
+    arr2 = NewArrayNode(3);
+    mu_check(OBJ_OK == Node_ArrayAppend(arr2, NewIntNode(2)));
+    mu_check(OBJ_OK == Node_ArrayAppend(arr2, NewIntNode(3)));
+    mu_check(OBJ_OK == Node_ArrayAppend(arr2, NewStringNode("qux", 3)));
+    mu_check(OBJ_OK == Node_ArrayExtend(arr, arr2));
+    mu_assert_int_eq(Node_Length(arr2), 0);
+    mu_assert_int_eq(Node_Length(arr), 10);
+    mu_check(OBJ_OK == Node_ArrayItem(arr, 5, &n));
+    mu_check(NULL != n);
+    mu_check(N_INTEGER == n->type);
+    mu_check(OBJ_OK == Node_ArrayItem(arr, 6, &n));
+    mu_check(NULL != n);
+    mu_check(N_NUMBER == n->type);
+
+    // Find some values
+    n = NewIntNode(2);
+    mu_assert_int_eq(Node_ArrayIndex(arr, n, 0, -1), 7);
+    mu_assert_int_eq(Node_ArrayIndex(arr, n, -1, 0), 7);
+    mu_assert_int_eq(Node_ArrayIndex(arr, n, 999, -999), 7);
+    mu_assert_int_eq(Node_ArrayIndex(arr, n, 8, 9), -1);
+    Node_Free(n);
+
+    n = NewDoubleNode(2.719);
+    mu_assert_int_eq(Node_ArrayIndex(arr, n, 0, -1), 6);
+    Node_Free(n);
+
+    n = NewBoolNode(0);
+    mu_assert_int_eq(Node_ArrayIndex(arr, n, 0, -1), 0);
+    Node_Free(n);
+
+    n = NewStringNode("qux", 3);
+    mu_assert_int_eq(Node_ArrayIndex(arr, n, 0, -1), 9);
+    Node_Free(n);
+
+    n = NewStringNode("QUX", 3);
+    mu_assert_int_eq(Node_ArrayIndex(arr, n, 0, -1), -1);
+    Node_Free(n);
+
+    mu_assert_int_eq(Node_ArrayIndex(arr, NULL, 0, -1), 1);
+
+    // Delete some more elements
+    mu_check(OBJ_OK == Node_ArrayDel(arr, 0));
+    mu_check(OBJ_OK == Node_ArrayDel(arr, 1));
+    mu_check(OBJ_OK == Node_ArrayDel(arr, 0));
+    mu_check(OBJ_OK == Node_ArrayDel(arr, 6));
+    mu_check(OBJ_OK == Node_ArrayDel(arr, 2));
+    mu_assert_int_eq(Node_Length(arr), 5);
+
+    Node_Free(arr2);
+    Node_Free(arr);
+}
 
 MU_TEST(testObject) {
     Node *root = NewDictNode(1);
@@ -13,6 +127,7 @@ MU_TEST(testObject) {
     mu_check(OBJ_OK == Node_DictSet(root, "foo", NewStringNode("bar", 3)));
     mu_check(OBJ_OK == Node_DictSet(root, "bar", NewBoolNode(0)));
     mu_check(OBJ_OK == Node_DictSet(root, "baz", NewArrayNode(0)));
+    mu_assert_int_eq(Node_Length(root), 3);
 
     Node *arr, *n;
     int rc = Node_DictGet(root, "non existing", &arr);
@@ -30,11 +145,9 @@ MU_TEST(testObject) {
 
     rc = Node_ArrayItem(arr, 0, &n);
     mu_assert_int_eq(OBJ_OK, rc);
-
     mu_check(n != NULL);
     mu_check(n->type == N_NUMBER);
 
-    // Node_Print(root, 0);
     Node_Free(root);
 }
 
@@ -177,6 +290,7 @@ MU_TEST(testPathParseRoot) {
 MU_TEST_SUITE(test_object) {
     // MU_SUITE_CONFIGURE(&test_setup, &test_teardown);
 
+    MU_RUN_TEST(testNodeArray);
     MU_RUN_TEST(testObject);
     MU_RUN_TEST(testPath);
     MU_RUN_TEST(testPathEx);
