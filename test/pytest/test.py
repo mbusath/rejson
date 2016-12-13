@@ -5,12 +5,12 @@ import json
 
 docs = {
     'basic': {
-        'key1': 'string value',
-        'key2': None,
-        'key#3': True,
-        'k4': 42,
-        'k5': [1, 2, 3],
-        'k5.a': [42, None, -1.2, False, ['sub', 'array'], {'subdict': True}],
+        'string': 'string value',
+        'none': None,
+        'bool': True,
+        'int': 42,
+        'num': 4.2,
+        'arr': [42, None, -1.2, False, ['sub', 'array'], {'subdict': True}],
         'dict': {
             'a': 1,
             'b': '2',
@@ -195,6 +195,49 @@ class JSONTestCase(ModuleTestCase(module_path='../../build/rejson.so', redis_pat
             for k, v in docs['types'].iteritems():
                 reply = r.execute_command('JSON.TYPE', 'test', '.{}'.format(k))
                 self.assertEqual(reply, k)
+
+    def testLenCommand(self):
+        with self.redis() as r:
+            r.delete('test')
+
+            # test that nothing is returned for empty keys 
+            self.assertEqual(r.execute_command('JSON.LEN', 'foo', '.bar'), None)            
+
+            # test elements with valid lengths
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.', json.dumps(docs['basic'])))
+            self.assertEqual(r.execute_command('JSON.LEN', 'test', '.string'), 12)
+            self.assertEqual(r.execute_command('JSON.LEN', 'test', '.dict'), 3)
+            self.assertEqual(r.execute_command('JSON.LEN', 'test', '.arr'), 6)
+
+            # test elements with undefined lengths
+            self.assertEqual(r.execute_command('JSON.LEN', 'test', '.bool'), -1)
+            self.assertEqual(r.execute_command('JSON.LEN', 'test', '.none'), -1)
+            self.assertEqual(r.execute_command('JSON.LEN', 'test', '.int'), -1)
+            self.assertEqual(r.execute_command('JSON.LEN', 'test', '.num'), -1)
+
+            # test a non existing key
+            try:
+                self.assertEqual(r.execute_command('JSON.LEN', 'test', '.foo'), -1)
+            except redis.exceptions.ResponseError:
+                pass
+            finally:
+                pass
+            
+            # test an out of bounds index
+            try:
+                self.assertEqual(r.execute_command('JSON.LEN', 'test', '.arr[999]'), -1)
+            except redis.exceptions.ResponseError:
+                pass
+            finally:
+                pass
+
+            # test an infinite index
+            try:
+                self.assertEqual(r.execute_command('JSON.LEN', 'test', '.arr[-inf]'), -1)
+            except redis.exceptions.ResponseError:
+                pass
+            finally:
+                pass
 
 if __name__ == '__main__':
     unittest.main()

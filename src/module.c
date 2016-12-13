@@ -232,6 +232,99 @@ int JSONType_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
     return REDISMODULE_OK;
 }
 
+/* JSON.LEN <key> <path>
+ * Reports the length of JSON element at `path` in `key`
+ * If the key does not exist, null is returned.
+ * Reply: Integer, specifically the length of the value or -1 if no length is defined for it.
+*/
+int JSONLen_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+
+    // check args
+    if (argc != 3) return RedisModule_WrongArity(ctx);
+    RedisModule_AutoMemory(ctx);
+
+    // key must be empty or a JSON type
+    RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ);
+    int type = RedisModule_KeyType(key);
+    if (REDISMODULE_KEYTYPE_EMPTY == type) {
+        RedisModule_ReplyWithNull(ctx);
+        return REDISMODULE_OK;
+    }
+    if (RedisModule_ModuleTypeGetType(key) != JsonType) {
+        RedisModule_ReplyWithError(ctx, REDISMODULE_ERRORMSG_WRONGTYPE);
+        return REDISMODULE_ERR;
+    }
+
+    // path must be valid
+    SearchPath sp = NewSearchPath(0);
+    size_t pathlen;
+    const char *path = RedisModule_StringPtrLen(argv[2], &pathlen);
+    if (PARSE_ERR == ParseJSONPath(path, pathlen, &sp)) {
+        SearchPath_Free(&sp);
+        RedisModule_ReplyWithError(ctx, REJSON_ERROR_PARSE_PATH);
+        return REDISMODULE_ERR;
+    }
+
+    Object *objRoot = RedisModule_ModuleTypeGetValue(key);
+    Object *objTarget;  // the node targetted for retrieval
+
+    if (!SearchPath_IsRootPath(&sp)) {
+        PathError pe = SearchPath_Find(&sp, objRoot, &objTarget);
+        if (E_OK != pe) {
+            SearchPath_Free(&sp);
+            switch (pe) {
+                case E_BADTYPE:
+                    RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_BADTYPE);
+                    return REDISMODULE_ERR;
+                    break;
+                case E_NOINDEX:
+                    RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_NOINDEX);
+                    return REDISMODULE_ERR;
+                    break;
+                case E_NOKEY:
+                    RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_NOKEY);
+                    return REDISMODULE_ERR;
+                    break;
+                case E_INFINDEX:
+                    RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_INFINDEX);
+                    return REDISMODULE_ERR;
+                    break;
+                default:
+                    RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_UNKNOWN);
+                    return REDISMODULE_ERR;
+                    break;
+            }  // switch (pe)
+        }      // if (E_OK != pe)
+    } else {
+        objTarget = objRoot;
+    }
+
+    SearchPath_Free(&sp);
+
+    if (!objTarget) {
+        RedisModule_ReplyWithLongLong(ctx, -1);
+    } else {
+        switch (objTarget->type) {
+            case N_BOOLEAN:
+            case N_INTEGER:
+            case N_NUMBER:
+                RedisModule_ReplyWithLongLong(ctx, -1);
+                break;
+            case N_STRING:
+            case N_DICT:
+            case N_ARRAY:
+                RedisModule_ReplyWithLongLong(ctx, Node_Length(objTarget));
+                break;
+            default:
+                RedisModule_ReplyWithError(ctx, REJSON_ERROR_TYPE_INVALID);
+                return REDISMODULE_ERR;
+                break;
+        }  // switch (objTarget->type)
+    }      // else
+
+    return REDISMODULE_OK;
+}
+
 /* JSON.SET <key> <path> <json>
  * Creates or updates the JSON object in `key`
  * Paths always begin at the root (`.`). For paths referencing anything deeper than the root, the
@@ -651,6 +744,10 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx) {
 
     /* Main commands. */
     if (RedisModule_CreateCommand(ctx, "json.type", JSONType_RedisCommand, "readonly", 1, 1, 1) ==
+        REDISMODULE_ERR)
+        return REDISMODULE_ERR;
+
+    if (RedisModule_CreateCommand(ctx, "json.len", JSONLen_RedisCommand, "readonly", 1, 1, 1) ==
         REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
