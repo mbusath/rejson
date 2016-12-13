@@ -24,8 +24,11 @@ typedef enum {
     // array index is out of range
     E_NOINDEX,
 
-    // array index is an infinite
-    E_INFINDEX,
+    // array index is a positive infinite
+    E_POSINFINDEX,
+
+    // array index is a positive infinite
+    E_NEGINFINDEX,
 
     // the path predicate does not match the node type
     E_BADTYPE,
@@ -72,7 +75,7 @@ void SearchPath_AppendRoot(SearchPath *p);
 /* Free a search path and all its nodes */
 void SearchPath_Free(SearchPath *p);
 
-Node *__pathNode_eval(PathNode *pn, Node *n, PathError *err);
+//Node *__pathNode_eval(PathNode *pn, Node *n, PathError *err);
 
 /**
 * Find a node in an object tree based on a parsed path.

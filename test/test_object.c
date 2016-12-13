@@ -314,13 +314,13 @@ MU_TEST(testPathArray) {
     sp = NewSearchPath(1);
     SearchPath_AppendInfiniteIndex(&sp, 1);
     pe = SearchPath_Find(&sp, arr, &n);
-    mu_check(pe == E_INFINDEX);
+    mu_check(pe == E_POSINFINDEX);
     SearchPath_Free(&sp);    
 
     sp = NewSearchPath(1);
     SearchPath_AppendInfiniteIndex(&sp, 0);
     pe = SearchPath_Find(&sp, arr, &n);
-    mu_check(pe == E_INFINDEX);
+    mu_check(pe == E_NEGINFINDEX);
     SearchPath_Free(&sp);    
 
     Node_Free(arr);

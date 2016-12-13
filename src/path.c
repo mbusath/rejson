@@ -16,7 +16,7 @@ Node *__pathNode_eval(PathNode *pn, Node *n, PathError *err) {
                 *err = E_NOINDEX;
             }
         } else if (NT_INFINITE == pn->type) {
-            *err = E_INFINDEX;
+            *err = pn->value.positive ? E_POSINFINDEX : E_NEGINFINDEX;
         } else {
             goto badtype;
         }
@@ -68,7 +68,8 @@ PathError SearchPath_FindEx(SearchPath *path, Node *root, Node **n, Node **p, in
             switch (ret) {
                 case E_NOKEY:
                 case E_NOINDEX:
-                case E_INFINDEX:
+                case E_POSINFINDEX:
+                case E_NEGINFINDEX:
                     *p = prev;
                     break;
                 default:
