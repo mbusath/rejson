@@ -14,6 +14,7 @@
 typedef enum {
     T_KEY,
     T_INDEX,
+    T_INFINITE,
 } tokenType;
 
 // tokenizer state
@@ -24,6 +25,7 @@ typedef enum {
     S_KEY,
     S_BRACKET,
     S_DOT,
+    S_SIGN,
 } tokenizerState;
 
 // the token we're now on

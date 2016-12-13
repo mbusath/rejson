@@ -42,10 +42,12 @@ int _tokenizePath(const char *json, size_t len, SearchPath *path) {
                     // skip to the beginnning of the key
                     tok.s++;
                     st = S_KEY;
-                    // digit after bracket means numeric index
-                } else if (isdigit(c)) {
+                } else if (isdigit(c)) {  // digit after bracket means numeric index
                     tok.len++;
                     st = S_NUMBER;
+                } else if ('-' == c || '+' == c) {
+                    tok.len++;
+                    st = S_SIGN;
                 } else {
                     goto syntaxerror;
                 }
@@ -111,6 +113,25 @@ int _tokenizePath(const char *json, size_t len, SearchPath *path) {
                 }
                 tok.len++;
                 break;
+
+            // we're within a signed index or an infinite
+            case S_SIGN:
+                // a digit means we're back to numbers
+                if (isdigit(c)) {
+                    tok.len++;
+                    st = S_NUMBER;
+                } else if ('i' == c && offset < len - 3 && *(pos + 1) == 'n' && *(pos + 2) == 'f' &&
+                           *(pos + 3) == ']') {  // maybe we're `inf]`
+                    tok.type = T_INFINITE;
+                    tok.len = 4;
+                    pos += 4;
+                    offset += 4;
+                    st = S_NULL;
+                    goto tokenend;
+                } else {
+                    goto syntaxerror;
+                }
+                break;
         }  // switch (st)
         offset++;
         pos++;
@@ -122,18 +143,20 @@ int _tokenizePath(const char *json, size_t len, SearchPath *path) {
         }
         continue;
     tokenend : {
-        if (tok.type == T_INDEX) {
+        if (T_INDEX == tok.type) {
             // convert the string to int. we can't use atoi because it expects
             // NULL termintated strings
             int64_t num = 0;
-            for (int i = 0; i < tok.len; i++) {
+            for (int i = !isdigit(tok.s[0]); i < tok.len; i++) {
                 int digit = tok.s[i] - '0';
                 num = num * 10 + digit;
             }
-
+            if ('-' == tok.s[0]) num = -num;
             SearchPath_AppendIndex(path, num);
-        } else if (tok.type == T_KEY) {
-            if (1 == offset == len && '.' == c) {   // check for root
+        } else if (T_INFINITE == tok.type) {
+            SearchPath_AppendInfiniteIndex(path, '+' == tok.s[0]);
+        } else if (T_KEY == tok.type) {
+            if (1 == offset == len && '.' == c) {  // check for root
                 SearchPath_AppendRoot(path);
             } else {
                 SearchPath_AppendKey(path, tok.s, tok.len);

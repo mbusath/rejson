@@ -7,13 +7,18 @@ Node *__pathNode_eval(PathNode *pn, Node *n, PathError *err) {
     }
 
     if (n->type == N_ARRAY) {
-        if (pn->type != NT_INDEX) {
-            goto badtype;
-        }
         Node *rn = NULL;
-        int rc = Node_ArrayItem(n, pn->value.index, &rn);
-        if (rc != OBJ_OK) {
-            *err = E_NOINDEX;
+        if (NT_INDEX == pn->type) {
+            int index = pn->value.index;
+            if (index < 0) index = Node_Length(n) + index;
+            int rc = Node_ArrayItem(n, index, &rn);
+            if (rc != OBJ_OK) {
+                *err = E_NOINDEX;
+            }
+        } else if (NT_INFINITE == pn->type) {
+            *err = E_INFINDEX;
+        } else {
+            goto badtype;
         }
         return rn;
     }
@@ -41,6 +46,7 @@ PathError SearchPath_Find(SearchPath *path, Node *root, Node **n) {
     for (int i = 0; i < path->len; i++) {
         current = __pathNode_eval(&path->nodes[i], current, &ret);
         if (ret != E_OK) {
+            *n = NULL;
             return ret;
         }
     }
@@ -62,11 +68,14 @@ PathError SearchPath_FindEx(SearchPath *path, Node *root, Node **n, Node **p, in
             switch (ret) {
                 case E_NOKEY:
                 case E_NOINDEX:
+                case E_INFINDEX:
                     *p = prev;
                     break;
                 default:
                     break;
             }
+            *p = prev;
+            *n = NULL;
             return ret;
         }
     }
@@ -85,12 +94,21 @@ void __searchPath_append(SearchPath *p, PathNode pn) {
 
     p->nodes[p->len++] = pn;
 }
+
+void SearchPath_AppendInfiniteIndex(SearchPath *p, int positive) {
+    PathNode pn;
+    pn.type = NT_INFINITE;
+    pn.value.positive = positive;
+    __searchPath_append(p, pn);
+}
+
 void SearchPath_AppendIndex(SearchPath *p, int idx) {
     PathNode pn;
     pn.type = NT_INDEX;
     pn.value.index = idx;
     __searchPath_append(p, pn);
 }
+
 void SearchPath_AppendKey(SearchPath *p, const char *key, const size_t len) {
     PathNode pn;
     pn.type = NT_KEY;

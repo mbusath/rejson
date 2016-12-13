@@ -11,6 +11,7 @@ typedef enum {
     NT_ROOT,
     NT_KEY,
     NT_INDEX,
+    NT_INFINITE,
 } PathNodeType;
 
 /* Error codes returned from path lookups */
@@ -23,6 +24,9 @@ typedef enum {
     // array index is out of range
     E_NOINDEX,
 
+    // array index is an infinite
+    E_INFINDEX,
+
     // the path predicate does not match the node type
     E_BADTYPE,
 } PathError;
@@ -33,6 +37,7 @@ typedef struct {
     union {
         int index;
         const char *key;
+        int positive;
     } value;
 } PathNode;
 
@@ -51,6 +56,9 @@ typedef struct {
 
 /* Create a new search path. cap can be 0 if you don't know it */
 SearchPath NewSearchPath(size_t cap);
+
+/* Append an array infinite index selection node to the path */
+void SearchPath_AppendInfiniteIndex(SearchPath *p, int positive);
 
 /* Append an array index selection node to the path */
 void SearchPath_AppendIndex(SearchPath *p, int idx);

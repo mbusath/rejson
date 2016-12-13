@@ -238,7 +238,6 @@ MU_TEST(testPathEx) {
     mu_check(p == dict);
     SearchPath_Free(&sp);
 
-
     // bad type
     sp = NewSearchPath(2);
     SearchPath_AppendKey(&sp, "foo", 3);
@@ -261,27 +260,98 @@ MU_TEST(testPathEx) {
     Node_Free(root);
 }
 
+MU_TEST(testPathArray) {
+    Node *n, *arr = NewArrayNode(0);
+    SearchPath sp;
+    PathError pe;
+
+    mu_check(NULL != arr);
+    mu_check(OBJ_OK == Node_ArrayAppend(arr, NewIntNode(0)));
+    mu_check(OBJ_OK == Node_ArrayAppend(arr, NewIntNode(1)));
+    mu_check(OBJ_OK == Node_ArrayAppend(arr, NewIntNode(2)));
+    mu_check(OBJ_OK == Node_ArrayAppend(arr, NewIntNode(3)));
+    mu_check(OBJ_OK == Node_ArrayAppend(arr, NewIntNode(4)));
+    mu_assert_int_eq(Node_Length(arr), 5);
+
+    // test positive index path
+    for(int i = 0; i < 5; i++) {
+        sp = NewSearchPath(1);
+        SearchPath_AppendIndex(&sp, i);
+        pe = SearchPath_Find(&sp, arr, &n);
+        mu_check(pe == E_OK);
+        mu_check(NULL != n);
+        mu_check(N_INTEGER == n->type);
+        mu_check(i == n->value.intval);
+        SearchPath_Free(&sp);
+    }
+
+    // test negative index path
+    for(int i = -1; i > -6; i--) {
+        sp = NewSearchPath(1);
+        SearchPath_AppendIndex(&sp, i);
+        pe = SearchPath_Find(&sp, arr, &n);
+        mu_check(pe == E_OK);
+        mu_check(NULL != n);
+        mu_check(N_INTEGER == n->type);
+        mu_check(5 + i == n->value.intval);
+        SearchPath_Free(&sp);
+    }
+
+    // verify that out of bounds access errs
+    sp = NewSearchPath(1);
+    SearchPath_AppendIndex(&sp, 5);
+    pe = SearchPath_Find(&sp, arr, &n);
+    mu_check(E_NOINDEX == pe);
+    SearchPath_Free(&sp);
+
+    sp = NewSearchPath(1);
+    SearchPath_AppendIndex(&sp, -6);
+    pe = SearchPath_Find(&sp, arr, &n);
+    mu_check(E_NOINDEX == pe);
+    SearchPath_Free(&sp);
+
+    // test the infinity
+    sp = NewSearchPath(1);
+    SearchPath_AppendInfiniteIndex(&sp, 1);
+    pe = SearchPath_Find(&sp, arr, &n);
+    mu_check(pe == E_INFINDEX);
+    SearchPath_Free(&sp);    
+
+    sp = NewSearchPath(1);
+    SearchPath_AppendInfiniteIndex(&sp, 0);
+    pe = SearchPath_Find(&sp, arr, &n);
+    mu_check(pe == E_INFINDEX);
+    SearchPath_Free(&sp);    
+
+    Node_Free(arr);
+}
+
 MU_TEST(testPathParse) {
-    const char *path = "foo.bar[3][\"baz\"].bar[\"boo\"][\"\"][6379]";
+    const char *path = "foo.bar[3][\"baz\"].bar[\"boo\"][\"\"][6379][-17][+18][+inf][-inf]";
 
     SearchPath sp = NewSearchPath(0);
     int rc = ParseJSONPath(path, strlen(path), &sp);
     mu_assert_int_eq(rc, PARSE_OK);
 
-    mu_assert_int_eq(sp.len, 8);
+    mu_assert_int_eq(sp.len, 12);
 
-    mu_check(!strcmp(sp.nodes[0].value.key, "foo"));
-    mu_check(!strcmp(sp.nodes[1].value.key, "bar"));
-    mu_check(sp.nodes[2].value.index == 3);
-    mu_check(!strcmp(sp.nodes[3].value.key, "baz"));
-    mu_check(!strcmp(sp.nodes[4].value.key, "bar"));
-    mu_check(!strcmp(sp.nodes[5].value.key, "boo"));
-    mu_check(!strcmp(sp.nodes[6].value.key, ""));
-    mu_check(sp.nodes[7].value.index == 6379);
+    mu_check(sp.nodes[0].type == NT_KEY && !strcmp(sp.nodes[0].value.key, "foo"));
+    mu_check(sp.nodes[1].type == NT_KEY && !strcmp(sp.nodes[1].value.key, "bar"));
+    mu_check(sp.nodes[2].type == NT_INDEX && sp.nodes[2].value.index == 3);
+    mu_check(sp.nodes[3].type == NT_KEY && !strcmp(sp.nodes[3].value.key, "baz"));
+    mu_check(sp.nodes[4].type == NT_KEY && !strcmp(sp.nodes[4].value.key, "bar"));
+    mu_check(sp.nodes[5].type == NT_KEY && !strcmp(sp.nodes[5].value.key, "boo"));
+    mu_check(sp.nodes[6].type == NT_KEY && !strcmp(sp.nodes[6].value.key, ""));
+    mu_check(sp.nodes[7].type == NT_INDEX && sp.nodes[7].value.index == 6379);
+    mu_check(sp.nodes[8].type == NT_INDEX && sp.nodes[8].value.index == -17);
+    mu_check(sp.nodes[9].type == NT_INDEX && sp.nodes[9].value.index == 18);
+    mu_check(sp.nodes[10].type == NT_INFINITE && sp.nodes[10].value.positive);
+    mu_check(sp.nodes[11].type == NT_INFINITE && !sp.nodes[11].value.positive);
 
-    const char *badpaths[] = {"3",       "6379",        "foo[bar]",     "foo[]",
-                              "foo[3",   "bar[\"]",     "foo..bar",     "foo['bar']",
-                              "foo/bar", "foo.bar[-1]", "foo.bar[1.1]", NULL};
+    const char *badpaths[] = {
+        "3",          "6379",       "foo[bar]", "foo[]",         "foo[3",        "bar[\"]",
+        "foo..bar",   "foo['bar']", "foo/bar",  "foo.bar[-1.2]", "foo.bar[1.1]", "foo.bar[+in",
+        "foobar[-i]", NULL};
 
     for (int idx = 0; badpaths[idx] != NULL; idx++) {
         mu_check(ParseJSONPath(badpaths[idx], strlen(badpaths[idx]), &sp) == PARSE_ERR);
@@ -309,7 +379,7 @@ MU_TEST_SUITE(test_object) {
     MU_RUN_TEST(testObject);
     MU_RUN_TEST(testPath);
     MU_RUN_TEST(testPathEx);
-
+    MU_RUN_TEST(testPathArray);
     MU_RUN_TEST(testPathParse);
     MU_RUN_TEST(testPathParseRoot);
 }
