@@ -24,6 +24,15 @@ docs = {
         'int': 42,
         'float': -1.2
     },
+    'types' : {
+        'null':     None,
+        'boolean':  False,
+        'integer':  42,
+        'number':   1.2,
+        'string':   'str',
+        'object':   {},
+        'array':    []
+    },
     'user': {
         'id':       'b2e4ded8a48cfeb837f300f78901fb278f29432c',
         'email':    'dfucbitz@soanon.ter',
@@ -173,7 +182,19 @@ class JSONTestCase(ModuleTestCase(module_path='../../build/rejson.so', redis_pat
             raw = r.execute_command('JSON.GET', 'test', '.dict.foo')
             data = json.loads(raw)
             self.assertEqual(data, u'bar')
+            # TODO: continue testing
 
+    def testArrayCRUD(self):
+        # TODO
+        pass
+
+    def testTypeCommand(self):
+        with self.redis() as r:
+            r.delete('test')
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.', json.dumps(docs['types'])))
+            for k, v in docs['types'].iteritems():
+                reply = r.execute_command('JSON.TYPE', 'test', '.{}'.format(k))
+                self.assertEqual(reply, k)
 
 if __name__ == '__main__':
     unittest.main()

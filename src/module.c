@@ -54,8 +54,10 @@
 #define REJSON_ERROR_PATH_BADTYPE "ERR path includes non-key/non-index"
 #define REJSON_ERROR_PATH_NOINDEX "ERR path index out of range"
 #define REJSON_ERROR_PATH_NOKEY "ERR path key does not exist"
+#define REJSON_ERROR_PATH_INFINDEX "ERR path includes an infinite index"
 #define REJSON_ERROR_PATH_NONTERMINAL_INFINITE "ERR infinite index not a terminal path token"
 #define REJSON_ERROR_PATH_UNKNOWN "ERR unknown path error"
+#define REJSON_ERROR_TYPE_INVALID "ERR invalid JSON type encountered"
 #define REJSON_ERROR_DICT_SET "ERR couldn't set key in dictionary"
 #define REJSON_ERROR_ARRAY_SET "ERR couldn't set item in array"
 #define REJSON_ERROR_ARRAY_ADD "ERR couldn't add item to array"
@@ -126,6 +128,110 @@ int ObjectGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
 }
 
 // == Module JSON commands ==
+
+/* JSON.TYPE <key> <path>
+ * Reports the type of JSON element at `path` in `key`
+ * Reply: Simple string
+*/
+int JSONType_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    // type names
+    const char *types[] = {"none",   "null",   "boolean", "integer",
+                           "number", "string", "object",  "array"};
+
+    // check args
+    if (argc != 3) return RedisModule_WrongArity(ctx);
+    RedisModule_AutoMemory(ctx);
+
+    // key must be empty or a JSON type
+    RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ);
+    int type = RedisModule_KeyType(key);
+    if (REDISMODULE_KEYTYPE_EMPTY == type) {
+        RedisModule_ReplyWithSimpleString(ctx, types[0]);
+        return REDISMODULE_OK;
+    }
+    if (RedisModule_ModuleTypeGetType(key) != JsonType) {
+        RedisModule_ReplyWithError(ctx, REDISMODULE_ERRORMSG_WRONGTYPE);
+        return REDISMODULE_ERR;
+    }
+
+    // path must be valid
+    SearchPath sp = NewSearchPath(0);
+    size_t pathlen;
+    const char *path = RedisModule_StringPtrLen(argv[2], &pathlen);
+    if (PARSE_ERR == ParseJSONPath(path, pathlen, &sp)) {
+        SearchPath_Free(&sp);
+        RedisModule_ReplyWithError(ctx, REJSON_ERROR_PARSE_PATH);
+        return REDISMODULE_ERR;
+    }
+
+    Object *objRoot = RedisModule_ModuleTypeGetValue(key);
+    Object *objTarget;  // the node targetted for retrieval
+
+    if (!SearchPath_IsRootPath(&sp)) {
+        PathError pe = SearchPath_Find(&sp, objRoot, &objTarget);
+        if (E_OK != pe) {
+            SearchPath_Free(&sp);
+            switch (pe) {
+                case E_BADTYPE:
+                    RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_BADTYPE);
+                    return REDISMODULE_ERR;
+                    break;
+                case E_NOINDEX:
+                    RedisModule_ReplyWithSimpleString(ctx, types[0]);
+                    return REDISMODULE_OK;
+                    break;
+                case E_NOKEY:
+                    RedisModule_ReplyWithSimpleString(ctx, types[0]);
+                    return REDISMODULE_OK;
+                    break;
+                case E_INFINDEX:
+                    RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_INFINDEX);
+                    return REDISMODULE_ERR;
+                    break;
+                default:
+                    RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_UNKNOWN);
+                    return REDISMODULE_ERR;
+                    break;
+            }  // switch (pe)
+        }      // if (E_OK != pe)
+    } else {
+        objTarget = objRoot;
+    }
+
+    SearchPath_Free(&sp);
+
+    if (!objTarget) {
+        RedisModule_ReplyWithSimpleString(ctx, types[1]);
+    } else {
+        switch (objTarget->type) {
+            case N_BOOLEAN:
+                RedisModule_ReplyWithSimpleString(ctx, types[2]);
+                break;
+            case N_INTEGER:
+                RedisModule_ReplyWithSimpleString(ctx, types[3]);
+                break;
+            case N_NUMBER:
+                RedisModule_ReplyWithSimpleString(ctx, types[4]);
+                break;
+            case N_STRING:
+                RedisModule_ReplyWithSimpleString(ctx, types[5]);
+                break;
+            case N_DICT:
+                RedisModule_ReplyWithSimpleString(ctx, types[6]);
+                break;
+            case N_ARRAY:
+                RedisModule_ReplyWithSimpleString(ctx, types[7]);
+                break;
+            default:
+                RedisModule_ReplyWithError(ctx, REJSON_ERROR_TYPE_INVALID);
+                return REDISMODULE_ERR;
+                break;
+        }  // switch (objTarget->type)
+    }      // else
+
+    return REDISMODULE_OK;
+}
+
 /* JSON.SET <key> <path> <json>
  * Creates or updates the JSON object in `key`
  * Paths always begin at the root (`.`). For paths referencing anything deeper than the root, the
@@ -151,7 +257,8 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ | REDISMODULE_WRITE);
     int type = RedisModule_KeyType(key);
     if (REDISMODULE_KEYTYPE_EMPTY != type && RedisModule_ModuleTypeGetType(key) != JsonType) {
-        return RedisModule_ReplyWithError(ctx, REDISMODULE_ERRORMSG_WRONGTYPE);
+        RedisModule_ReplyWithError(ctx, REDISMODULE_ERRORMSG_WRONGTYPE);
+        return REDISMODULE_ERR;
     }
 
     // path must be valid
@@ -159,6 +266,7 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     const char *path = RedisModule_StringPtrLen(argv[2], &pathlen);
     SearchPath sp = NewSearchPath(0);
     if (PARSE_ERR == ParseJSONPath(path, pathlen, &sp)) {
+        SearchPath_Free(&sp);
         RedisModule_ReplyWithError(ctx, REJSON_ERROR_PARSE_PATH);
         goto error;
     }
@@ -300,7 +408,8 @@ int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
         RedisModule_ReplyWithNull(ctx);
         return REDISMODULE_OK;
     } else if (RedisModule_ModuleTypeGetType(key) != JsonType) {
-        return RedisModule_ReplyWithError(ctx, REDISMODULE_ERRORMSG_WRONGTYPE);
+        RedisModule_ReplyWithError(ctx, REDISMODULE_ERRORMSG_WRONGTYPE);
+        return REDISMODULE_ERR;
     }
 
     // check for optional arguments
@@ -341,6 +450,7 @@ int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     if (pathpos < argc) {
         path = RedisModule_StringPtrLen(argv[pathpos], &pathlen);
         if (PARSE_ERR == ParseJSONPath(path, pathlen, &sp)) {
+            SearchPath_Free(&sp);
             RedisModule_ReplyWithError(ctx, REJSON_ERROR_PARSE_PATH);
             return REDISMODULE_ERR;
         }
@@ -364,12 +474,15 @@ int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
                 case E_NOKEY:
                     RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_NOKEY);
                     break;
+                case E_INFINDEX:
+                    RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_INFINDEX);
+                    break;
                 default:
                     RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_UNKNOWN);
                     break;
             }  // switch (pe)
             SearchPath_Free(&sp);
-            return PARSE_ERR;
+            return REDISMODULE_ERR;
         }  // if (E_OK != pe)
     } else {
         objTarget = objRoot;
@@ -406,7 +519,8 @@ int JSONDel_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
         RedisModule_ReplyWithLongLong(ctx, 0);
         return REDISMODULE_OK;
     } else if (RedisModule_ModuleTypeGetType(key) != JsonType) {
-        return RedisModule_ReplyWithError(ctx, REDISMODULE_ERRORMSG_WRONGTYPE);
+        RedisModule_ReplyWithError(ctx, REDISMODULE_ERRORMSG_WRONGTYPE);
+        return REDISMODULE_ERR;
     }
 
     // The stored JSON object root
@@ -424,6 +538,7 @@ int JSONDel_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
         const char *path = RedisModule_StringPtrLen(argv[i + 2], &pathlen);
         sp[i] = NewSearchPath(0);
         if (PARSE_ERR == ParseJSONPath(path, pathlen, &sp[i])) {
+            npaths = i + 1;
             RedisModule_ReplyWithError(ctx, REJSON_ERROR_PARSE_PATH);
             goto error;
         }
@@ -535,6 +650,10 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx) {
         return REDISMODULE_ERR;
 
     /* Main commands. */
+    if (RedisModule_CreateCommand(ctx, "json.type", JSONType_RedisCommand, "readonly", 1, 1, 1) ==
+        REDISMODULE_ERR)
+        return REDISMODULE_ERR;
+
     if (RedisModule_CreateCommand(ctx, "json.set", JSONSet_RedisCommand, "write deny-oom", 1, 1,
                                   1) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
