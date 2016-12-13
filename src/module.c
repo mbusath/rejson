@@ -54,9 +54,11 @@
 #define REJSON_ERROR_PATH_BADTYPE "ERR path includes non-key/non-index"
 #define REJSON_ERROR_PATH_NOINDEX "ERR path index out of range"
 #define REJSON_ERROR_PATH_NOKEY "ERR path key does not exist"
+#define REJSON_ERROR_PATH_NONTERMINAL_INFINITE "ERR infinite index not a terminal path token"
 #define REJSON_ERROR_PATH_UNKNOWN "ERR unknown path error"
 #define REJSON_ERROR_DICT_SET "ERR couldn't set key in dictionary"
 #define REJSON_ERROR_ARRAY_SET "ERR couldn't set item in array"
+#define REJSON_ERROR_ARRAY_ADD "ERR couldn't add item to array"
 #define REJSON_ERROR_SERIALIZE "ERR object serialization to JSON failed"
 #define REJSON_ERROR_DICT_DEL "ERR could not delete from dictionary"
 #define REJSON_ERROR_ARRAY_DEL "ERR could not delete from array"
@@ -214,17 +216,24 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
                     goto error;
                     break;
                 case E_NOKEY:
+                    if (errlevel != sp.len - 1) {  // only create terminal missing keys
+                        RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_NOKEY);
+                        goto error;
+                    }
+                    break;
                 case E_NOINDEX:
-                    // E_NOKEY and E_NOINDEX handling depends on the level - a terminal node is
-                    // created while the others err
-                    if (errlevel != sp.len - 1) {
-                        RedisModule_ReplyWithError(ctx, pe == E_NOKEY ? REJSON_ERROR_PATH_NOKEY
-                                                                      : REJSON_ERROR_PATH_NOINDEX);
+                    RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_NOINDEX);
+                    goto error;
+                    break;
+                case E_INFINDEX:
+                    if (errlevel != sp.len - 1) {  // only pushing/adding to terminal arrays
+                        RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_NONTERMINAL_INFINITE);
                         goto error;
                     }
                     break;
                 default:
                     RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_UNKNOWN);
+                    goto error;
                     break;
             }  // switch (pe)
 
@@ -234,15 +243,25 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
                     RedisModule_ReplyWithError(ctx, REJSON_ERROR_DICT_SET);
                     goto error;
                 }
-            } else {  // must be an array
-                // TODO: Append to list with 0/-1 or AS/SP, also - perhaps mandate that value must
-                // be a list whose values are treated as the values to add
-                if (OBJ_OK != Node_ArraySet(objParent, sp.nodes[sp.len - 1].value.index, jo)) {
-                    RedisModule_ReplyWithError(ctx, REJSON_ERROR_ARRAY_SET);
-                    goto error;
+            } else if (N_ARRAY == objParent->type) {
+                if (NT_INDEX == sp.nodes[sp.len - 1].type) {  // set an element in array by index
+                    int index = sp.nodes[sp.len - 1].value.index;
+                    if (index < 0) index = Node_Length(objParent) + index;
+                    if (OBJ_OK != Node_ArraySet(objParent, index, jo)) {
+                        RedisModule_ReplyWithError(ctx, REJSON_ERROR_ARRAY_SET);
+                        goto error;
+                    }
+                    // unlike DictSet, ArraySet does not free so we need to call it explicitly
+                    // (TODO?)
+                    Node_Free(objTarget);
+                } else if (NT_INFINITE == sp.nodes[sp.len - 1].type) {  // prepend/append to array
+                    if (OBJ_OK != (sp.nodes[sp.len - 1].value.positive
+                                       ? Node_ArrayAppend(objParent, jo)
+                                       : Node_ArrayInsert(objParent, 0, jo))) {
+                        RedisModule_ReplyWithError(ctx, REJSON_ERROR_ARRAY_ADD);
+                        goto error;
+                    }
                 }
-                // unlike DictSet, ArraySet does not free so we need to call it explicitly (TODO?)
-                Node_Free(objTarget);
             }
         } else {  // if (sp.len) <- replace the root
             RedisModule_DeleteKey(key);
