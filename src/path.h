@@ -25,10 +25,7 @@ typedef enum {
     E_NOINDEX,
 
     // array index is a positive infinite
-    E_POSINFINDEX,
-
-    // array index is a positive infinite
-    E_NEGINFINDEX,
+    E_INFINDEX,
 
     // the path predicate does not match the node type
     E_BADTYPE,
@@ -75,7 +72,7 @@ void SearchPath_AppendRoot(SearchPath *p);
 /* Free a search path and all its nodes */
 void SearchPath_Free(SearchPath *p);
 
-//Node *__pathNode_eval(PathNode *pn, Node *n, PathError *err);
+// Node *__pathNode_eval(PathNode *pn, Node *n, PathError *err);
 
 /**
 * Find a node in an object tree based on a parsed path.
@@ -85,8 +82,8 @@ void SearchPath_Free(SearchPath *p);
 PathError SearchPath_Find(SearchPath *path, Node *root, Node **n);
 
 /**
-* Like SearchPath_Find, but sets p to the parent container of n and in case of a E_NOKEY or
-* E_NOINDEX returns the path level of the error
+* Like SearchPath_Find, but sets p to the parent container of n. In case of E_NOKEY, E_NOINDEX,
+* and E_INFINDEX returns the path level of the error in errnode.
 */
 PathError SearchPath_FindEx(SearchPath *path, Node *root, Node **n, Node **p, int *errnode);
 #endif

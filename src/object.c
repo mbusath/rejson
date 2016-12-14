@@ -172,41 +172,43 @@ void __node_ArrayMakeRoomFor(Node *arr, uint32_t addlen) {
     a->entries = realloc(a->entries, a->cap * sizeof(Node *));
 }
 
-int Node_ArrayInsert(Node *arr, int index, Node *n) {
+int Node_ArrayInsert(Node *arr, int index, Node *sub) {
     t_array *a = &arr->value.arrval;
+    t_array *s = &sub->value.arrval;
 
     // Translate negative index value
     if (index < 0) {
         index = MAX(0, (int)a->len + index);
     }
 
-    __node_ArrayMakeRoomFor(arr, 1);
-    if (index >= a->len) {  // append
-        a->entries[a->len] = n;
-    } else {  // insert at index
-        memmove(&a->entries[index + 1], &a->entries[index], (a->len - index) * sizeof(Node *));
-        a->entries[index] = n;
+    __node_ArrayMakeRoomFor(arr, s->len);
+    if (index < a->len) {   //  shift contents to the right
+        memmove(&a->entries[index + s->len], &a->entries[index], (a->len - index) * sizeof(Node *));
     }
-    a->len++;
+
+    // copy the references
+    memcpy(&a->entries[index], s->entries, s->len * sizeof(Node *));
+    a->len += s->len;
+    
+    // destroy all traces
+    s->len = 0;
+    Node_Free(sub);
 
     return OBJ_OK;
 }
 
 int Node_ArrayAppend(Node *arr, Node *n) {
     t_array *a = &arr->value.arrval;
-    return Node_ArrayInsert(arr, a->len, n);
+    __node_ArrayMakeRoomFor(arr, 1);
+    a->entries[a->len++] = n;
+    
+    return OBJ_OK;
 }
 
-int Node_ArrayExtend(Node *dst, Node *src) {
-    t_array *d = &dst->value.arrval;
-    t_array *s = &src->value.arrval;
-
-    __node_ArrayMakeRoomFor(dst, s->len);
-    memcpy(&d->entries[d->len], s->entries, s->len * sizeof(Node *));
-    d->len += s->len;
-    s->len = 0;
-
-    return OBJ_OK;
+int Node_ArrayPrepend(Node *arr, Node *n) {
+    Node *sub = NewArrayNode(1);
+    Node_ArrayAppend(arr, n);
+    return Node_ArrayInsert(arr, 0, sub);
 }
 
 int Node_ArraySet(Node *arr, int index, Node *n) {

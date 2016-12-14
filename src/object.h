@@ -141,17 +141,17 @@ void Node_Print(Node *n, int depth);
 /** Deletes (and frees) the node from an array at index. */
 int Node_ArrayDel(Node *arr, int index);
 
-/** Insert a node to an array before the node at index. If the index is geq the array's' length the
- * node is appended to the end of the array. Negative index values are interpreted as beginning from
- * the end.*/
-int Node_ArrayInsert(Node *arr, int index, Node *n);
+/** Insert nodes in sub to an array before the node at index. If the index is geq the array's'
+ * length the nodes are appended to the end of the array. Negative index values are interpreted as
+ * beginning from the end. A negative index geq to the length is assumed as 0.
+ * NOTE: the sub array is destroyed. */
+int Node_ArrayInsert(Node *arr, int index, Node *sub);
 
 /** Append a node to an array node. */
 int Node_ArrayAppend(Node *arr, Node *n);
 
-/** Append the source array's nodes to an the destination array.
- * NOTE: only node references are copied, so the source array is emptied. */
-int Node_ArrayExtend(Node *dst, Node *src);
+/** Prepend a node to an array node. */
+int Node_ArrayPrepend(Node *arr, Node *n);
 
 /**
 * Set an array's member at a given index to a new node.

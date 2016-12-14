@@ -44,50 +44,49 @@ MU_TEST(testNodeArray) {
     mu_check(N_STRING == n->type);
 
     // Test inserting to the list
-    mu_check(OBJ_OK == Node_ArrayInsert(arr, 0, NewBoolNode(0)));
-    mu_assert_int_eq(Node_Length(arr), 4);
+    Node *sub = NewArrayNode(2);
+    mu_check(NULL != sub);
+    mu_check(OBJ_OK == Node_ArrayAppend(sub, NewBoolNode(0)));
+    mu_check(OBJ_OK == Node_ArrayAppend(sub, NULL));
+    mu_check(OBJ_OK == Node_ArrayInsert(arr, 0, sub));
+    mu_assert_int_eq(Node_Length(arr), 5);
     mu_check(OBJ_OK == Node_ArrayItem(arr, 0, &n));
     mu_check(NULL != n);
     mu_check(N_BOOLEAN == n->type);
-
-    mu_check(OBJ_OK == Node_ArrayInsert(arr, 1, NULL));
-    mu_assert_int_eq(Node_Length(arr), 5);
     mu_check(OBJ_OK == Node_ArrayItem(arr, 1, &n));
     mu_check(NULL == n);
 
-    mu_check(OBJ_OK == Node_ArrayInsert(arr, 42, NewDoubleNode(2.719)));
+    sub = NewArrayNode(1);
+    mu_check(NULL != sub);
+    mu_check(OBJ_OK == Node_ArrayAppend(sub, NewCStringNode("qux")));
+    mu_check(OBJ_OK == Node_ArrayInsert(arr, 5, sub));
     mu_assert_int_eq(Node_Length(arr), 6);
     mu_check(OBJ_OK == Node_ArrayItem(arr, 5, &n));
     mu_check(NULL != n);
-    mu_check(N_NUMBER == n->type);
+    mu_check(N_STRING == n->type);
 
-    mu_check(OBJ_OK == Node_ArrayInsert(arr, -1, NewIntNode(1)));
-    mu_assert_int_eq(Node_Length(arr), 7);
-    mu_check(OBJ_OK == Node_ArrayItem(arr, 5, &n));
-    mu_check(NULL != n);
-    mu_check(N_INTEGER == n->type);
-
-    // Test extending a list
-    arr2 = NewArrayNode(3);
-    mu_check(OBJ_OK == Node_ArrayAppend(arr2, NewIntNode(2)));
-    mu_check(OBJ_OK == Node_ArrayAppend(arr2, NewIntNode(3)));
-    mu_check(OBJ_OK == Node_ArrayAppend(arr2, NewStringNode("qux", 3)));
-    mu_check(OBJ_OK == Node_ArrayExtend(arr, arr2));
-    mu_assert_int_eq(Node_Length(arr2), 0);
-    mu_assert_int_eq(Node_Length(arr), 10);
+    sub = NewArrayNode(2);
+    mu_check(NULL != sub);
+    mu_check(OBJ_OK == Node_ArrayAppend(sub, NewIntNode(2)));
+    mu_check(OBJ_OK == Node_ArrayAppend(sub, NewDoubleNode(2.719)));
+    mu_check(OBJ_OK == Node_ArrayInsert(arr, -1, sub));
+    mu_assert_int_eq(Node_Length(arr), 8);
     mu_check(OBJ_OK == Node_ArrayItem(arr, 5, &n));
     mu_check(NULL != n);
     mu_check(N_INTEGER == n->type);
     mu_check(OBJ_OK == Node_ArrayItem(arr, 6, &n));
     mu_check(NULL != n);
     mu_check(N_NUMBER == n->type);
+    mu_check(OBJ_OK == Node_ArrayItem(arr, 7, &n));
+    mu_check(NULL != n);
+    mu_check(N_STRING == n->type);
 
     // Find some values
     n = NewIntNode(2);
-    mu_assert_int_eq(Node_ArrayIndex(arr, n, 0, -1), 7);
-    mu_assert_int_eq(Node_ArrayIndex(arr, n, -1, 0), 7);
-    mu_assert_int_eq(Node_ArrayIndex(arr, n, 999, -999), 7);
-    mu_assert_int_eq(Node_ArrayIndex(arr, n, 8, 9), -1);
+    mu_assert_int_eq(Node_ArrayIndex(arr, n, 0, -1), 5);
+    mu_assert_int_eq(Node_ArrayIndex(arr, n, -1, 0), 5);
+    mu_assert_int_eq(Node_ArrayIndex(arr, n, 999, -999), 5);
+    mu_assert_int_eq(Node_ArrayIndex(arr, n, 1, 3), -1);
     Node_Free(n);
 
     n = NewDoubleNode(2.719);
@@ -99,7 +98,7 @@ MU_TEST(testNodeArray) {
     Node_Free(n);
 
     n = NewStringNode("qux", 3);
-    mu_assert_int_eq(Node_ArrayIndex(arr, n, 0, -1), 9);
+    mu_assert_int_eq(Node_ArrayIndex(arr, n, 0, -1), 7);
     Node_Free(n);
 
     n = NewStringNode("QUX", 3);
@@ -112,11 +111,10 @@ MU_TEST(testNodeArray) {
     mu_check(OBJ_OK == Node_ArrayDel(arr, 0));
     mu_check(OBJ_OK == Node_ArrayDel(arr, 1));
     mu_check(OBJ_OK == Node_ArrayDel(arr, 0));
-    mu_check(OBJ_OK == Node_ArrayDel(arr, 6));
+    mu_check(OBJ_OK == Node_ArrayDel(arr, 4));
     mu_check(OBJ_OK == Node_ArrayDel(arr, 2));
-    mu_assert_int_eq(Node_Length(arr), 5);
+    mu_assert_int_eq(Node_Length(arr), 3);
 
-    Node_Free(arr2);
     Node_Free(arr);
 }
 
@@ -212,7 +210,6 @@ MU_TEST(testPathEx) {
     SearchPath_AppendIndex(&sp, 0);
     pe = SearchPath_FindEx(&sp, root, &n, &p, &errlevel);
     mu_check(pe == E_OK);
-    mu_check(0 == errlevel);
     mu_check(arr == p);
     mu_check(n != NULL);
     mu_check(n->type == N_STRING);
@@ -314,13 +311,13 @@ MU_TEST(testPathArray) {
     sp = NewSearchPath(1);
     SearchPath_AppendInfiniteIndex(&sp, 1);
     pe = SearchPath_Find(&sp, arr, &n);
-    mu_check(pe == E_POSINFINDEX);
+    mu_check(pe == E_INFINDEX);
     SearchPath_Free(&sp);    
 
     sp = NewSearchPath(1);
     SearchPath_AppendInfiniteIndex(&sp, 0);
     pe = SearchPath_Find(&sp, arr, &n);
-    mu_check(pe == E_NEGINFINDEX);
+    mu_check(pe == E_INFINDEX);
     SearchPath_Free(&sp);    
 
     Node_Free(arr);

@@ -10,13 +10,13 @@ Node *__pathNode_eval(PathNode *pn, Node *n, PathError *err) {
         Node *rn = NULL;
         if (NT_INDEX == pn->type) {
             int index = pn->value.index;
-            if (index < 0) index = Node_Length(n) + index;
+            if (index < 0) index = n->value.arrval.len + index;
             int rc = Node_ArrayItem(n, index, &rn);
             if (rc != OBJ_OK) {
                 *err = E_NOINDEX;
             }
         } else if (NT_INFINITE == pn->type) {
-            *err = pn->value.positive ? E_POSINFINDEX : E_NEGINFINDEX;
+            *err = E_INFINDEX;
         } else {
             goto badtype;
         }
@@ -65,16 +65,6 @@ PathError SearchPath_FindEx(SearchPath *path, Node *root, Node **n, Node **p, in
         current = __pathNode_eval(&path->nodes[i], current, &ret);
         if (ret != E_OK) {
             *errnode = i;
-            switch (ret) {
-                case E_NOKEY:
-                case E_NOINDEX:
-                case E_POSINFINDEX:
-                case E_NEGINFINDEX:
-                    *p = prev;
-                    break;
-                default:
-                    break;
-            }
             *p = prev;
             *n = NULL;
             return ret;
