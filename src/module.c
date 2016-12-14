@@ -54,6 +54,7 @@
 #define REJSON_ERROR_PATH_NOKEY "ERR path key does not exist"
 #define REJSON_ERROR_PATH_INFINDEX "ERR path includes an infinite index"
 #define REJSON_ERROR_PATH_NONTERMINAL_INFINITE "ERR infinite index not a terminal path token"
+#define REJSON_ERROR_PATH_NONTERMINAL_KEY "ERR missing key not a terminal path token"
 #define REJSON_ERROR_PATH_UNKNOWN "ERR unknown path error"
 #define REJSON_ERROR_TYPE_INVALID "ERR invalid JSON type encountered"
 #define REJSON_ERROR_DICT_SET "ERR could not set key in dictionary"
@@ -358,7 +359,7 @@ error:
 */
 int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     // check args
-    if ((argc < 4) || (argc > 6)) return RedisModule_WrongArity(ctx);
+    if (argc != 4) return RedisModule_WrongArity(ctx);
     RedisModule_AutoMemory(ctx);
 
     // key must be empty or a JSON type
@@ -367,16 +368,6 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     if (REDISMODULE_KEYTYPE_EMPTY != type && RedisModule_ModuleTypeGetType(key) != JsonType) {
         RedisModule_ReplyWithError(ctx, REDISMODULE_ERRORMSG_WRONGTYPE);
         return REDISMODULE_ERR;
-    }
-
-    // path must be valid
-    size_t pathlen;
-    const char *path = RedisModule_StringPtrLen(argv[2], &pathlen);
-    SearchPath sp = NewSearchPath(0);
-    if (PARSE_ERR == ParseJSONPath(path, pathlen, &sp)) {
-        SearchPath_Free(&sp);
-        RedisModule_ReplyWithError(ctx, REJSON_ERROR_PARSE_PATH);
-        goto error;
     }
 
     // JSON must be valid
@@ -397,13 +388,22 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
         } else {
             RedisModule_ReplyWithError(ctx, REJSON_ERROR_JSONOBJECT_ERROR);
         }
-        goto error;
+        return REDISMODULE_ERR;
     }
 
-    // The stored JSON object root
+    // validate path
+    JSONPathNode_t jpn;
+    Object *objRoot =
+        (REDISMODULE_KEYTYPE_EMPTY == type ? jo : RedisModule_ModuleTypeGetValue(key));
+    if (PARSE_OK != NodeFromJSONPath(objRoot, argv[2], &jpn)) {
+        RedisModule_ReplyWithError(ctx, REJSON_ERROR_PARSE_PATH);
+        return REDISMODULE_ERR;
+    }
+    int isRootPath = SearchPath_IsRootPath(&jpn.sp);
+
     if (REDISMODULE_KEYTYPE_EMPTY == type) {
         // new keys must be created at the root
-        if (!SearchPath_IsRootPath(&sp)) {
+        if (E_OK != jpn.err || !isRootPath) {
             RedisModule_ReplyWithError(ctx, REJSON_ERROR_NEW_NOT_ROOT);
             goto error;
         }
@@ -413,84 +413,76 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
             goto error;
         }
         RedisModule_ModuleTypeSetValue(key, JsonType, jo);
-    } else {  // if (REDISMODULE_KEYTYPE_EMPTY == type)
-        Node *objRoot = RedisModule_ModuleTypeGetValue(key);
-        Node *objParent = NULL;
-        Node *objTarget;
-        if (!SearchPath_IsRootPath(&sp)) {  // anything but the root
-            int errlevel = 0;
-            PathError pe = SearchPath_FindEx(&sp, objRoot, &objTarget, &objParent, &errlevel);
-            switch (pe) {
-                case E_OK:
-                    break;
-                case E_BADTYPE:
-                    RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_BADTYPE);
-                    goto error;
-                    break;
-                case E_NOKEY:
-                    if (errlevel != sp.len - 1) {  // only create terminal missing keys
-                        RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_NOKEY);
+    } else {
+        // deal with path errors
+        switch (jpn.err) {
+            case E_OK:
+                if (isRootPath) {
+                    Node_Free(objRoot);
+                    RedisModule_ModuleTypeSetValue(key, JsonType, jo);        
+                } else if (N_DICT == jpn.p->type) {
+                    if (OBJ_OK != Node_DictSet(jpn.p, jpn.sp.nodes[jpn.sp.len - 1].value.key, jo)) {
+                        RedisModule_ReplyWithError(ctx, REJSON_ERROR_DICT_SET);
                         goto error;
                     }
-                    break;
-                case E_NOINDEX:
-                    RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_NOINDEX);
-                    goto error;
-                    break;
-                case E_INFINDEX:
-                    if (errlevel != sp.len - 1) {  // only pushing/adding to terminal arrays
-                        RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_NONTERMINAL_INFINITE);
-                        goto error;
-                    }
-                    break;
-                default:
-                    RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_UNKNOWN);
-                    goto error;
-                    break;
-            }  // switch (pe)
-
-            // replace or create target
-            if (N_DICT == objParent->type) {
-                if (OBJ_OK != Node_DictSet(objParent, sp.nodes[sp.len - 1].value.key, jo)) {
-                    RedisModule_ReplyWithError(ctx, REJSON_ERROR_DICT_SET);
-                    goto error;
-                }
-            } else if (N_ARRAY == objParent->type) {
-                if (NT_INDEX == sp.nodes[sp.len - 1].type) {  // set an element in array by index
-                    int index = sp.nodes[sp.len - 1].value.index;
-                    if (index < 0) index = Node_Length(objParent) + index;
-                    if (OBJ_OK != Node_ArraySet(objParent, index, jo)) {
+                } else {  // must be an array
+                    int index = jpn.sp.nodes[jpn.sp.len - 1].value.index;
+                    if (index < 0) index = jpn.p->value.arrval.len + index;
+                    if (OBJ_OK != Node_ArraySet(jpn.p, index, jo)) {
                         RedisModule_ReplyWithError(ctx, REJSON_ERROR_ARRAY_SET);
                         goto error;
                     }
                     // unlike DictSet, ArraySet does not free so we need to call it explicitly
                     // (TODO?)
-                    Node_Free(objTarget);
-                } else if (NT_INFINITE == sp.nodes[sp.len - 1].type) {  // prepend/append to array
-                    if (OBJ_OK != (sp.nodes[sp.len - 1].value.positive
-                                       ? Node_ArrayAppend(objParent, jo)
-                                       : Node_ArrayPrepend(objParent, jo))) {
-                        RedisModule_ReplyWithError(ctx, sp.nodes[sp.len - 1].value.positive
-                                                            ? REJSON_ERROR_ARRAY_APPEND
-                                                            : REJSON_ERROR_ARRAY_PREPEND);
-                        goto error;
-                    }
+                    Node_Free(jpn.n);
                 }
-            }
-        } else {  // if (sp.len) <- replace the root
-            RedisModule_DeleteKey(key);
-            RedisModule_ModuleTypeSetValue(key, JsonType, jo);
-        }
+                break;
+            case E_NOKEY:
+                // only allow inserting at terminal
+                if (jpn.errlevel != jpn.sp.len - 1) {
+                    RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_NONTERMINAL_KEY);
+                    goto error;
+                }
+                if (OBJ_OK != Node_DictSet(jpn.p, jpn.sp.nodes[jpn.sp.len - 1].value.key, jo)) {
+                    RedisModule_ReplyWithError(ctx, REJSON_ERROR_DICT_SET);
+                    goto error;
+                }
+                break;
+            case E_INFINDEX:
+                // only allow inserting at terminal
+                if (jpn.errlevel != jpn.sp.len - 1) {
+                    RedisModule_ReplyWithError(ctx, REJSON_ERROR_INSERT_NONTERMINAL);
+                    goto error;
+                }
+                if (OBJ_OK != (jpn.sp.nodes[jpn.sp.len - 1].value.positive
+                                   ? Node_ArrayAppend(jpn.p, jo)
+                                   : Node_ArrayPrepend(jpn.p, jo))) {
+                    RedisModule_ReplyWithError(ctx, jpn.sp.nodes[jpn.sp.len - 1].value.positive
+                                                        ? REJSON_ERROR_ARRAY_APPEND
+                                                        : REJSON_ERROR_ARRAY_PREPEND);
+                    goto error;
+                }
+                break;
+            case E_NOINDEX:
+                RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_NOINDEX);
+                goto error;
+            case E_BADTYPE:
+                RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_BADTYPE);
+                goto error;
+            default:
+                RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_UNKNOWN);
+                goto error;
+        }  // switch (err)
     }
 
-    SearchPath_Free(&sp);
+    JSONPathNode_Free(&jpn);
     RedisModule_ReplyWithSimpleString(ctx, "OK");
 
     RedisModule_ReplicateVerbatim(ctx);
     return REDISMODULE_OK;
 
 error:
-    SearchPath_Free(&sp);
+    JSONPathNode_Free(&jpn);
     if (jo) Node_Free(jo);
     return REDISMODULE_ERR;
 }

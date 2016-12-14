@@ -187,6 +187,30 @@ class JSONTestCase(ModuleTestCase(module_path='../../build/rejson.so', redis_pat
     def testArrayCRUD(self):
         with self.redis() as r:
             r.delete('test')
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.', '{ "arr": [] }'))
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.arr[-inf]', 0))
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.arr[+inf]', 1))
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.arr[0]', 0.1))
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.arr[-1]', 0.9))
+            data = json.loads(r.execute_command('JSON.GET', 'test', '.arr'))
+            self.assertListEqual(data, [0.1, 0.9])
+
+            try:
+                r.execute_command('JSON.SET', 'test', '.arr[9]', 0)
+            except redis.exceptions.ResponseError:
+                pass
+            finally:
+                pass
+
+            try:
+                r.execute_command('JSON.SET', 'test', '.arr[-9]', 0)
+            except redis.exceptions.ResponseError:
+                pass
+            finally:
+                pass
+
+
+            r.delete('test')
             self.assertOk(r.execute_command('JSON.SET', 'test', '.', '{ "arr": [1] }'))
             self.assertEqual(r.execute_command('JSON.INSERT', 'test', '.arr[0]', 0), 2)
             self.assertEqual(r.execute_command('JSON.INSERT', 'test', '.arr[-inf]', -1), 3)
@@ -194,8 +218,7 @@ class JSONTestCase(ModuleTestCase(module_path='../../build/rejson.so', redis_pat
             self.assertEqual(r.execute_command('JSON.INSERT', 'test', '.arr[-4]', -2), 5)
             self.assertEqual(r.execute_command('JSON.INSERT', 'test', '.arr[6]', 4), 6)
             self.assertEqual(r.execute_command('JSON.INSERT', 'test', '.arr[-1]', 3), 7)
-            raw = r.execute_command('JSON.GET', 'test', '.arr')
-            data = json.loads(raw)
+            data = json.loads(r.execute_command('JSON.GET', 'test', '.arr'))
             self.assertListEqual(data, [-2, -1, 0, 1, 2, 3, 4])
 
             r.delete('test')
@@ -205,8 +228,7 @@ class JSONTestCase(ModuleTestCase(module_path='../../build/rejson.so', redis_pat
             self.assertEqual(r.execute_command('JSON.INSERT', 'test', '.arr[-inf]', -2, -1), 5)
             self.assertEqual(r.execute_command('JSON.INSERT', 'test', '.arr[+inf]', 3, 6), 7)
             self.assertEqual(r.execute_command('JSON.INSERT', 'test', '.arr[6]', 4, 5), 9)
-            raw = r.execute_command('JSON.GET', 'test', '.arr')
-            data = json.loads(raw)
+            data = json.loads(r.execute_command('JSON.GET', 'test', '.arr'))
             self.assertListEqual(data, [-2, -1, 0, 1, 2, 3, 4, 5, 6])
             
             try:

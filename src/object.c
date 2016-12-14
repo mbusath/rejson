@@ -207,7 +207,7 @@ int Node_ArrayAppend(Node *arr, Node *n) {
 
 int Node_ArrayPrepend(Node *arr, Node *n) {
     Node *sub = NewArrayNode(1);
-    Node_ArrayAppend(arr, n);
+    Node_ArrayAppend(sub, n);
     return Node_ArrayInsert(arr, 0, sub);
 }
 
