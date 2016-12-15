@@ -42,8 +42,8 @@ docs = {
 
 }
 
-
-class JSONTestCase(ModuleTestCase(module_path='../../build/rejson.so', redis_path='../../../redis/src/redis-server')):
+# TODO: inject these from upper somehow
+class JSONTestCase(ModuleTestCase(module_path='../../lib/rejson.so', redis_path='../../../redis/src/redis-server')):
 
     def testSetRootWithNotObjectShouldFail(self):
         with self.redis() as r:
@@ -238,6 +238,26 @@ class JSONTestCase(ModuleTestCase(module_path='../../build/rejson.so', redis_pat
             finally:
                 pass
             # TODO: continue testing
+
+    def testIndexCommand(self):
+        with self.redis() as r:
+            r.delete('test')
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.', '{ "arr": [0, 1, 2, 3, 2, 1, 0] }'))
+            self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', 0), 0)
+            self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', 3), 3)
+            self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', 4), -1)
+            self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', 0, 1), 6)
+            self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', 0, -1), 6)
+            self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', 0, 6), 6)
+            self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', 0, 4, -1), 6)
+            self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', 0, 5, -2), -1)
+            self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', 2, -2, 6), -1)
+            self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', '"foo"'), -1)
+
+            self.assertEqual(r.execute_command('JSON.INSERT', 'test', '.arr[4]', '[4]'), 8)
+            self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', 3), 3)
+            self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', 2, 3), 5)
+            self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', '[4]'), -1)
 
     def testTypeCommand(self):
         with self.redis() as r:

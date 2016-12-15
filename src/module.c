@@ -597,6 +597,44 @@ error:
     return REDISMODULE_ERR;
 }
 
+/* JSON.MGET <path> <key> [<key> ...]
+ * Reply: Array of JSON strings
+*/
+int JSONMGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    if ((argc < 2)) return RedisModule_WrongArity(ctx);
+    RedisModule_AutoMemory(ctx);
+
+    // validate search path
+    size_t spathlen;
+    const char *spath = RedisModule_StringPtrLen(argv[1], &spathlen);
+    SearchPath sp = NewSearchPath(0);
+    if (PARSE_ERR == ParseJSONPath(spath, spathlen, &sp)) {
+        RedisModule_ReplyWithError(ctx, REJSON_ERROR_PARSE_PATH);
+        goto error;
+    }
+
+    // RedisModuleString *replies[] = calloc(argc - 2, sizeof(int));
+    for(int i = 2; i < argc; i++) {
+        // key must be empty (reply with null) or a an object type
+        RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ | REDISMODULE_WRITE);
+        int type = RedisModule_KeyType(key);
+        if (REDISMODULE_KEYTYPE_EMPTY == type) {
+            RedisModule_ReplyWithNull(ctx);
+            return REDISMODULE_OK;
+        } else if (RedisModule_ModuleTypeGetType(key) != JsonType) {
+            RedisModule_ReplyWithError(ctx, REDISMODULE_ERRORMSG_WRONGTYPE);
+            return REDISMODULE_ERR;
+        }        
+    }
+
+    SearchPath_Free(&sp);
+    return REDISMODULE_OK;
+
+error:
+    SearchPath_Free(&sp);
+    return REDISMODULE_ERR;
+}
+
 /* JSON.DEL <key> <path> [<path> ...]
  * Reply: Number of paths deleted
 */
@@ -999,7 +1037,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx) {
         REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
-    if (RedisModule_CreateCommand(ctx, "json.index", JSONIndex_RedisCommand, "readonly", 1, 1, 1) ==
+    if (RedisModule_CreateCommand(ctx, "json.index", JSONIndex_RedisCommand, "readonly getkeys-api", 1, 1, 1) ==
         REDISMODULE_ERR)
         return REDISMODULE_ERR;
 

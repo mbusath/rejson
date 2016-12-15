@@ -26,40 +26,19 @@ IF(UNIX AND NOT WIN32)
   ENDIF(CMAKE_UNAME)
 ENDIF(UNIX AND NOT WIN32)
 
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib)
+set (RMUTIL_DIR "${PROJECT_SOURCE_DIR}/deps/rmutil")
+
 include(CTest)
 enable_testing()
 
-add_library(object STATIC src/object.c src/path.c src/json_path.c deps/rmutil/vector.c src/rmalloc.c)
-add_executable(test_object test/test_object.c)
-target_link_libraries(test_object object)
-add_test(test_object test_object)
-
-add_library(json_object STATIC src/json_object.c src/jsonsl.c deps/rmutil/sds.c src/rmalloc.c)
-target_link_libraries(json_object object)
-add_executable(json_printer test/json_printer.c)
-target_link_libraries(json_printer json_object m)
-add_executable(test_json_object test/test_json_object.c)
-target_link_libraries(test_json_object json_object m)
-add_executable(json_validator test/json_validator.c)
-target_link_libraries(json_validator json_object m)
-add_test(test_json_object test_json_object)
-add_test(NAME valid_json_files COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test/json-validatortron.sh valid 0)
-add_test(NAME invalid_json_files COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/test/json-validatortron.sh invalid 1)
-
-add_library(rm_object STATIC src/object.c src/object_type.c src/path.c src/json_path.c deps/rmutil/vector.c src/rmalloc.c)
-add_library(rm_json_object STATIC src/json_object.c src/jsonsl.c deps/rmutil/sds.c src/rmalloc.c)
-target_compile_definitions(rm_object PUBLIC IS_REDIS_MODULE)
-target_compile_definitions(rm_json_object PUBLIC IS_REDIS_MODULE)
-target_link_libraries(rm_json_object rm_object)
-
-add_library(rejson SHARED src/module.c deps/rmutil/sds.c deps/rmutil/util.c)
-set_target_properties(rejson PROPERTIES PREFIX "" C_VISIBILITY_PRESET hidden LINK_FLAGS "-Bsymbolic")
-target_include_directories(rejson PUBLIC src PUBLIC deps/rmutil)
-target_compile_definitions(rejson PUBLIC IS_REDIS_MODULE)
-target_link_libraries(rejson rm_object rm_json_object m)
-add_test(NAME redis_module COMMAND ${CMAKE_MAKE_PROGRAM} -C ${CMAKE_CURRENT_SOURCE_DIR}/test/pytest)
+include_directories("${PROJECT_SOURCE_DIR}/src" $RMUTIL_DIR)
+add_subdirectory(src)
+add_subdirectory(test)
 
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})
 set(CPACK_PROJECT_VERSION ${PROJECT_VERSION})
 
 include(CPack)
+
+include_directories()
