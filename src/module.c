@@ -421,7 +421,7 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
         switch (jpn.err) {
             case E_OK:
                 if (isRootPath) {
-                    Node_Free(objRoot);
+                    RedisModule_DeleteKey(key);
                     RedisModule_ModuleTypeSetValue(key, JsonType, jo);
                 } else if (N_DICT == jpn.p->type) {
                     if (OBJ_OK != Node_DictSet(jpn.p, jpn.sp.nodes[jpn.sp.len - 1].value.key, jo)) {

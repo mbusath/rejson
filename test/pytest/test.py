@@ -4,6 +4,9 @@ import unittest
 import json
 
 docs = {
+    'simple': {
+        'foo': 'bar',
+    },
     'basic': {
         'string': 'string value',
         'none': None,
@@ -14,7 +17,7 @@ docs = {
         'dict': {
             'a': 1,
             'b': '2',
-            'c': None
+            'c': None,
         }
     },
     'scalars': {
@@ -22,7 +25,7 @@ docs = {
         'NoneType': None,
         'bool': True,
         'int': 42,
-        'float': -1.2
+        'float': -1.2,
     },
     'types': {
         'null':     None,
@@ -31,13 +34,13 @@ docs = {
         'number':   1.2,
         'string':   'str',
         'object':   {},
-        'array':    []
+        'array':    [],
     },
     'user': {
         'id':       'b2e4ded8a48cfeb837f300f78901fb278f29432c',
         'email':    'dfucbitz@soanon.ter',
         'signedIn': True,
-        'lastSeen': '12/12/2016 00:32:04'
+        'lastSeen': '12/12/2016 00:32:04',
     },
 
 }
@@ -76,6 +79,14 @@ class JSONTestCase(ModuleTestCase(module_path='../../lib/rejson.so', redis_path=
             r.delete('test')
             self.assertOk(r.execute_command('JSON.SET', 'test', '.', '{}'))
             self.assertExists(r, 'test')
+
+    def testSetReplaceRootShouldSucceed(self):
+        with self.redis() as r:
+            r.delete('test')
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.', json.dumps(docs['basic'])))
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.', json.dumps(docs['simple'])))
+            raw = r.execute_command('JSON.GET', 'test', '.')
+            self.assertDictEqual(json.loads(raw), docs['simple'])
 
     def testSetGetWholeBasicDocumentShouldBeEqual(self):
         with self.redis() as r:
