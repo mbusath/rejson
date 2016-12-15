@@ -155,7 +155,7 @@ int ObjectGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
     RedisModule_AutoMemory(ctx);
 
     // key must be empty (reply with null) or an object type
-    RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ | REDISMODULE_WRITE);
+    RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ);
     int type = RedisModule_KeyType(key);
     if (REDISMODULE_KEYTYPE_EMPTY == type) {
         RedisModule_ReplyWithNull(ctx);
@@ -501,7 +501,7 @@ int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     RedisModule_AutoMemory(ctx);
 
     // key must be empty (reply with null) or a an object type
-    RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ | REDISMODULE_WRITE);
+    RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ);
     int type = RedisModule_KeyType(key);
     if (REDISMODULE_KEYTYPE_EMPTY == type) {
         RedisModule_ReplyWithNull(ctx);
@@ -602,36 +602,63 @@ error:
 */
 int JSONMGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if ((argc < 2)) return RedisModule_WrongArity(ctx);
+    if (RedisModule_IsKeysPositionRequest(ctx)) {
+        for (int i = 2; i < argc - 2; i++)
+            RedisModule_KeyAtPos(ctx, i);
+        return REDISMODULE_OK;
+    }
     RedisModule_AutoMemory(ctx);
 
     // validate search path
     size_t spathlen;
     const char *spath = RedisModule_StringPtrLen(argv[1], &spathlen);
-    SearchPath sp = NewSearchPath(0);
-    if (PARSE_ERR == ParseJSONPath(spath, spathlen, &sp)) {
+    JSONPathNode_t jpn;
+    jpn.sp = NewSearchPath(0);
+    if (PARSE_ERR == ParseJSONPath(spath, spathlen, &jpn.sp)) {
         RedisModule_ReplyWithError(ctx, REJSON_ERROR_PARSE_PATH);
         goto error;
     }
 
-    // RedisModuleString *replies[] = calloc(argc - 2, sizeof(int));
-    for(int i = 2; i < argc; i++) {
-        // key must be empty (reply with null) or a an object type
-        RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ | REDISMODULE_WRITE);
+    // iterate keys
+    RedisModule_ReplyWithArray(ctx, argc - 2);
+    int isRootPath = SearchPath_IsRootPath(&jpn.sp);
+    JSONSerializeOpt jsopt = {0};
+    for (int i = 2; i < argc; i++) {
+        RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[i], REDISMODULE_READ);
+
+        // key must an object type, empties and others return null like MGET
         int type = RedisModule_KeyType(key);
-        if (REDISMODULE_KEYTYPE_EMPTY == type) {
-            RedisModule_ReplyWithNull(ctx);
-            return REDISMODULE_OK;
-        } else if (RedisModule_ModuleTypeGetType(key) != JsonType) {
-            RedisModule_ReplyWithError(ctx, REDISMODULE_ERRORMSG_WRONGTYPE);
-            return REDISMODULE_ERR;
-        }        
+        if (REDISMODULE_KEYTYPE_EMPTY == type) goto null;
+        if (RedisModule_ModuleTypeGetType(key) != JsonType) goto null;
+
+        // follow the path to the target node
+        Node *objRoot = RedisModule_ModuleTypeGetValue(key);
+        if (isRootPath) {
+            jpn.err = E_OK;
+            jpn.n = objRoot;
+        } else {
+            jpn.err = SearchPath_FindEx(&jpn.sp, objRoot, &jpn.n, &jpn.p, &jpn.errlevel);
+        }
+
+        // deal with errors by returning null for them as well
+        if (E_OK != jpn.err) goto null;
+
+        // serialize it
+        sds json = sdsempty();
+        SerializeNodeToJSON(jpn.n, &jsopt, &json);
+        RedisModule_ReplyWithStringBuffer(ctx, json, sdslen(json));
+        sdsfree(json);
+        continue;
+
+    null:
+        RedisModule_ReplyWithNull(ctx);
     }
 
-    SearchPath_Free(&sp);
+    SearchPath_Free(&jpn.sp);
     return REDISMODULE_OK;
 
 error:
-    SearchPath_Free(&sp);
+    SearchPath_Free(&jpn.sp);
     return REDISMODULE_ERR;
 }
 
@@ -899,7 +926,7 @@ int JSONIndex_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
     RedisModule_AutoMemory(ctx);
 
     // key can't be empty and must be a JSON type
-    RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ | REDISMODULE_WRITE);
+    RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ);
     int type = RedisModule_KeyType(key);
     if (REDISMODULE_KEYTYPE_EMPTY == type) {
         // an empty key has no paths so break early
@@ -1025,6 +1052,10 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx) {
         REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
+    if (RedisModule_CreateCommand(ctx, "json.mget", JSONMGet_RedisCommand, "readonly getkeys-api", 1,
+                                  1, 1) == REDISMODULE_ERR)
+        return REDISMODULE_ERR;
+
     if (RedisModule_CreateCommand(ctx, "json.del", JSONDel_RedisCommand, "write", 1, 1, 1) ==
         REDISMODULE_ERR)
         return REDISMODULE_ERR;
@@ -1037,7 +1068,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx) {
         REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
-    if (RedisModule_CreateCommand(ctx, "json.index", JSONIndex_RedisCommand, "readonly getkeys-api", 1, 1, 1) ==
+    if (RedisModule_CreateCommand(ctx, "json.index", JSONIndex_RedisCommand, "readonly", 1, 1, 1) ==
         REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
