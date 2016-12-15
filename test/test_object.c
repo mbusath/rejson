@@ -25,8 +25,7 @@ MU_TEST(testNodeArray) {
     mu_check(42 == n->value.intval);
 
     // Delete the element
-    mu_check(OBJ_ERR == Node_ArrayDel(arr, 1));
-    mu_check(OBJ_OK == Node_ArrayDel(arr, 0));
+    mu_check(OBJ_OK == Node_ArrayDelRange(arr, 0, 1));
     mu_check(OBJ_ERR == Node_ArrayItem(arr, 0, &n));
     mu_assert_int_eq(Node_Length(arr), 0);
 
@@ -108,12 +107,14 @@ MU_TEST(testNodeArray) {
     mu_assert_int_eq(Node_ArrayIndex(arr, NULL, 0, -1), 1);
 
     // Delete some more elements
-    mu_check(OBJ_OK == Node_ArrayDel(arr, 0));
-    mu_check(OBJ_OK == Node_ArrayDel(arr, 1));
-    mu_check(OBJ_OK == Node_ArrayDel(arr, 0));
-    mu_check(OBJ_OK == Node_ArrayDel(arr, 4));
-    mu_check(OBJ_OK == Node_ArrayDel(arr, 2));
+    mu_check(OBJ_OK == Node_ArrayDelRange(arr, 0, 1));
+    mu_check(OBJ_OK == Node_ArrayDelRange(arr, 1, 1));
+    mu_check(OBJ_OK == Node_ArrayDelRange(arr, 0, 1));
+    mu_check(OBJ_OK == Node_ArrayDelRange(arr, 4, 1));
+    mu_check(OBJ_OK == Node_ArrayDelRange(arr, 2, 1));
     mu_assert_int_eq(Node_Length(arr), 3);
+    mu_check(OBJ_OK == Node_ArrayDelRange(arr, 0, 2));
+    mu_assert_int_eq(Node_Length(arr), 1);
 
     Node_Free(arr);
 }

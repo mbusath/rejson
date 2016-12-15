@@ -138,8 +138,8 @@ int Node_Length(const Node *n);
 /** Pretty-print a node. Not JSON compliant but will produce something almost JSON-ish */
 void Node_Print(Node *n, int depth);
 
-/** Deletes (and frees) the node from an array at index. */
-int Node_ArrayDel(Node *arr, int index);
+/** Deletes (and frees) the count of nodes from an array starting at index. */
+int Node_ArrayDelRange(Node *arr, const int index, const int count);
 
 /** Insert nodes in sub to an array before the node at index. If the index is geq the array's'
  * length the nodes are appended to the end of the array. Negative index values are interpreted as

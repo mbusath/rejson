@@ -126,17 +126,23 @@ int Node_Length(const Node *n) {
     return -1;
 }
 
-int Node_ArrayDel(Node *arr, int index) {
+int Node_ArrayDelRange(Node *arr, const int index, const int count) {
     t_array *a = &arr->value.arrval;
 
-    // invalid index!
-    if (index < 0 || index >= a->len) {
-        return OBJ_ERR;
-    }
+    if (count <= 0 || !a->len) return OBJ_OK;
 
-    Node_Free(a->entries[index]);
-    memmove(&a->entries[index], &a->entries[index + 1], (a->len - index - 1) * sizeof(Node *));
-    a->len--;
+    int start = index < 0 ? MAX(a->len + index, 0) : MIN(start, a->len - 1);
+    int stop = MIN(start + count, a->len);  // stop is exclusive
+
+    // free range
+    for (int i = start; i < stop; i++) Node_Free(a->entries[i]);
+
+    // move whatever remains on the left side
+    if (stop < a->len)
+        memmove(&a->entries[start], &a->entries[stop], (a->len - stop) * sizeof(Node *));
+
+    // adjust length
+    a->len -= stop - start;
 
     return OBJ_OK;
 }
@@ -182,14 +188,14 @@ int Node_ArrayInsert(Node *arr, int index, Node *sub) {
     }
 
     __node_ArrayMakeRoomFor(arr, s->len);
-    if (index < a->len) {   //  shift contents to the right
+    if (index < a->len) {  //  shift contents to the right
         memmove(&a->entries[index + s->len], &a->entries[index], (a->len - index) * sizeof(Node *));
     }
 
     // copy the references
     memcpy(&a->entries[index], s->entries, s->len * sizeof(Node *));
     a->len += s->len;
-    
+
     // destroy all traces
     s->len = 0;
     Node_Free(sub);
@@ -201,7 +207,7 @@ int Node_ArrayAppend(Node *arr, Node *n) {
     t_array *a = &arr->value.arrval;
     __node_ArrayMakeRoomFor(arr, 1);
     a->entries[a->len++] = n;
-    
+
     return OBJ_OK;
 }
 
@@ -293,8 +299,8 @@ int Node_ArrayIndex(Node *arr, Node *n, int start, int stop) {
                 break;
             default:
                 break;
-        }   // switch (n->type)
-    }   // for
+        }  // switch (n->type)
+    }      // for
     return -1;
 }
 

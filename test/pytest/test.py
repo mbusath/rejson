@@ -36,13 +36,6 @@ docs = {
         'object':   {},
         'array':    [],
     },
-    'user': {
-        'id':       'b2e4ded8a48cfeb837f300f78901fb278f29432c',
-        'email':    'dfucbitz@soanon.ter',
-        'signedIn': True,
-        'lastSeen': '12/12/2016 00:32:04',
-    },
-
 }
 
 
@@ -234,6 +227,20 @@ class JSONTestCase(ModuleTestCase(module_path='../../lib/rejson.so', redis_path=
             self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', 3), 3)
             self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', 2, 3), 5)
             self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', '[4]'), -1)
+
+    def testTrimCommand(self):
+        with self.redis() as r:
+            r.delete('test')
+            self.assertOk(r.execute_command('JSON.SET', 'test', 
+                                            '.', '{ "arr": [0, 1, 2, 3, 2, 1, 0] }'))
+            self.assertEqual(r.execute_command('JSON.TRIM', 'test', '.arr', 1, -2), 5)
+            self.assertListEqual(json.loads(r.execute_command('JSON.GET', 'test', '.arr')), [1,2,3,2,1])
+            self.assertEqual(r.execute_command('JSON.TRIM', 'test', '.arr', 0, 99), 5)
+            self.assertListEqual(json.loads(r.execute_command('JSON.GET', 'test', '.arr')), [1,2,3,2,1])
+            self.assertEqual(r.execute_command('JSON.TRIM', 'test', '.arr', 0, 2), 3)
+            self.assertListEqual(json.loads(r.execute_command('JSON.GET', 'test', '.arr')), [1,2,3])
+            self.assertEqual(r.execute_command('JSON.TRIM', 'test', '.arr', 99, 2), 0)
+            self.assertListEqual(json.loads(r.execute_command('JSON.GET', 'test', '.arr')), [])
 
     def testTypeCommand(self):
         with self.redis() as r:
