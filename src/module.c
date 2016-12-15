@@ -69,6 +69,8 @@
 #define REJSON_ERROR_INSERT_NONTERMINAL "ERR can not insert into a non terminal list"
 #define REJSON_ERROR_INSERT_SUBARRY "ERR could not not prepare the insert operation"
 #define REJSON_ERROR_INDEX_INVALID "ERR invalid array index"
+#define REJSON_ERROR_TARGET_PATH_NAN "ERR target path is not a number"
+#define REJSON_ERROR_VALUE_NAN "ERR value is not a number"
 
 static RedisModuleType *JsonType;
 
@@ -500,7 +502,7 @@ int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     if ((argc < 2)) return RedisModule_WrongArity(ctx);
     RedisModule_AutoMemory(ctx);
 
-    // key must be empty (reply with null) or a an object type
+    // key must be empty (reply with null) or an object type
     RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ);
     int type = RedisModule_KeyType(key);
     if (REDISMODULE_KEYTYPE_EMPTY == type) {
@@ -603,8 +605,7 @@ error:
 int JSONMGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if ((argc < 2)) return RedisModule_WrongArity(ctx);
     if (RedisModule_IsKeysPositionRequest(ctx)) {
-        for (int i = 2; i < argc - 2; i++)
-            RedisModule_KeyAtPos(ctx, i);
+        for (int i = 2; i < argc - 2; i++) RedisModule_KeyAtPos(ctx, i);
         return REDISMODULE_OK;
     }
     RedisModule_AutoMemory(ctx);
@@ -777,6 +778,118 @@ error:
         for (int i = 0; i < npaths; i++) SearchPath_Free(&sp[i]);
     }
     free(targets);
+    return REDISMODULE_ERR;
+}
+
+/* JSON.INCRBY <key> <path> <value>
+ * JSON.MULTBY <key> <path> <value>
+ * Increments/multiplies the value stored under `path` by `value`. An existing path must be a number.
+ * Reply: Integer or string, depending on type of result
+*/
+int JSONNumber_GenericCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    if ((argc < 4)) return RedisModule_WrongArity(ctx);
+    RedisModule_AutoMemory(ctx);
+
+    const char *cmd = RedisModule_StringPtrLen(argv[0], NULL);
+
+    // key must be an object type
+    RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ);
+    int type = RedisModule_KeyType(key);
+    if (RedisModule_ModuleTypeGetType(key) != JsonType) {
+        RedisModule_ReplyWithError(ctx, REDISMODULE_ERRORMSG_WRONGTYPE);
+        return REDISMODULE_ERR;
+    }
+
+    // validate path
+    JSONPathNode_t jpn;
+    Object *objRoot = RedisModule_ModuleTypeGetValue(key);
+    if (PARSE_OK != NodeFromJSONPath(objRoot, argv[2], &jpn)) {
+        RedisModule_ReplyWithError(ctx, REJSON_ERROR_PARSE_PATH);
+        return REDISMODULE_ERR;
+    }
+
+    double oval, bval, rz;  // original value, by value and the result
+
+    // deal with errors
+    switch (jpn.err) {
+        case E_OK:
+            // verify that the target is a number
+            if (N_INTEGER != jpn.n->type && N_NUMBER != jpn.n->type) {
+                RedisModule_ReplyWithError(ctx, REJSON_ERROR_TARGET_PATH_NAN);
+                goto error;
+            }
+            oval = N_INTEGER == jpn.n->type ? (double)jpn.n->value.intval : jpn.n->value.numval;
+            break;
+        case E_BADTYPE:
+            RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_BADTYPE);
+            goto error;
+        case E_NOINDEX:
+            RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_NOINDEX);
+            goto error;
+        case E_NOKEY:
+            RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_NOKEY);
+            goto error;
+        case E_INFINDEX:
+            RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_INFINDEX);
+            goto error;
+        default:
+            RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_UNKNOWN);
+            goto error;
+    }  // switch (jpn.err)
+
+    // the json parser already distinguishes between ints and doubles
+    size_t vallen;
+    const char *val = RedisModule_StringPtrLen(argv[3], &vallen);
+    Object *joval = NULL;
+    char *err = NULL;
+    if (JSONOBJECT_OK != CreateNodeFromJSON(val, vallen, &joval, &err)) {
+        if (err) {
+            RedisModule_ReplyWithError(ctx, err);
+            RedisModule_Free(err);
+        } else {
+            RedisModule_ReplyWithError(ctx, REJSON_ERROR_JSONOBJECT_ERROR);
+        }
+        goto error;
+    }
+    if (N_INTEGER != joval->type && N_NUMBER != joval->type) {
+        RedisModule_ReplyWithError(ctx, REJSON_ERROR_VALUE_NAN);
+        goto error;
+    }
+    bval = N_INTEGER == joval->type ? (double)joval->value.intval : joval->value.numval;
+
+    // perform the operation
+    if (!strcasecmp("json.incrby", cmd)) {
+        rz = oval + bval;
+    } else {
+        rz = oval * bval;
+    }
+
+    // make an object out of the result and replace the target node
+    Node *orz;
+    if (N_INTEGER == jpn.n->type && N_INTEGER == joval->type) {
+        orz = NewIntNode((int)rz);
+        RedisModule_ReplyWithLongLong(ctx, (long long)rz);
+    } else {
+        orz = NewDoubleNode(rz);
+        RedisModule_ReplyWithDouble(ctx, rz);
+    }
+
+    if (N_DICT == jpn.p->type) {
+        Node_DictSet(jpn.p, jpn.sp.nodes[jpn.sp.len - 1].value.key, orz);
+    } else {  // must be an array
+        int index = jpn.sp.nodes[jpn.sp.len - 1].value.index;
+        if (index < 0) index = jpn.p->value.arrval.len + index;
+        Node_ArraySet(jpn.p, index, orz);
+        // unlike DictSet, ArraySet does not free so we need to call it explicitly
+        // (TODO?)
+        Node_Free(jpn.n);
+    }
+
+    JSONPathNode_Free(&jpn);
+    return REDISMODULE_OK;
+
+error:
+    JSONPathNode_Free(&jpn);
     return REDISMODULE_ERR;
 }
 
@@ -1052,12 +1165,20 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx) {
         REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
-    if (RedisModule_CreateCommand(ctx, "json.mget", JSONMGet_RedisCommand, "readonly getkeys-api", 1,
-                                  1, 1) == REDISMODULE_ERR)
+    if (RedisModule_CreateCommand(ctx, "json.mget", JSONMGet_RedisCommand, "readonly getkeys-api",
+                                  1, 1, 1) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
     if (RedisModule_CreateCommand(ctx, "json.del", JSONDel_RedisCommand, "write", 1, 1, 1) ==
         REDISMODULE_ERR)
+        return REDISMODULE_ERR;
+
+    if (RedisModule_CreateCommand(ctx, "json.incrby", JSONNumber_GenericCommand, "write", 1, 1,
+                                  1) == REDISMODULE_ERR)
+        return REDISMODULE_ERR;
+
+    if (RedisModule_CreateCommand(ctx, "json.multby", JSONNumber_GenericCommand, "write", 1, 1,
+                                  1) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
     if (RedisModule_CreateCommand(ctx, "json.forget", JSONDel_RedisCommand, "write", 1, 1, 1) ==
