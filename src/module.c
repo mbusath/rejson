@@ -68,6 +68,7 @@
 #define REJSON_ERROR_INSERT "ERR could not insert into array"
 #define REJSON_ERROR_INSERT_NONTERMINAL "ERR can not insert into a non terminal list"
 #define REJSON_ERROR_INSERT_SUBARRY "ERR could not not prepare the insert operation"
+#define REJSON_ERROR_INDEX_INVALID "ERR invalid array index"
 
 static RedisModuleType *JsonType;
 
@@ -419,7 +420,7 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
             case E_OK:
                 if (isRootPath) {
                     Node_Free(objRoot);
-                    RedisModule_ModuleTypeSetValue(key, JsonType, jo);        
+                    RedisModule_ModuleTypeSetValue(key, JsonType, jo);
                 } else if (N_DICT == jpn.p->type) {
                     if (OBJ_OK != Node_DictSet(jpn.p, jpn.sp.nodes[jpn.sp.len - 1].value.key, jo)) {
                         RedisModule_ReplyWithError(ctx, REJSON_ERROR_DICT_SET);
@@ -850,6 +851,106 @@ error:
     return REDISMODULE_ERR;
 }
 
+/* JSON.INDEX <key> <path> <scalar> [start] [stop]
+ * Returns the lowest index of value in the array, optionally between start (default 0) and stop
+ * (default -1)
+*/
+int JSONIndex_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    // check args
+    if ((argc < 4) || (argc > 6)) return RedisModule_WrongArity(ctx);
+    RedisModule_AutoMemory(ctx);
+
+    // key can't be empty and must be a JSON type
+    RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ | REDISMODULE_WRITE);
+    int type = RedisModule_KeyType(key);
+    if (REDISMODULE_KEYTYPE_EMPTY == type) {
+        // an empty key has no paths so break early
+        RedisModule_ReplyWithError(ctx, REJSON_ERROR_TYPE_NOT_ARRAY);
+        return REDISMODULE_ERR;
+    } else if (RedisModule_ModuleTypeGetType(key) != JsonType) {
+        RedisModule_ReplyWithError(ctx, REDISMODULE_ERRORMSG_WRONGTYPE);
+        return REDISMODULE_ERR;
+    }
+
+    // validate path
+    JSONPathNode_t jpn;
+    Object *objRoot = RedisModule_ModuleTypeGetValue(key);
+    if (PARSE_OK != NodeFromJSONPath(objRoot, argv[2], &jpn)) {
+        RedisModule_ReplyWithError(ctx, REJSON_ERROR_PARSE_PATH);
+        return REDISMODULE_ERR;
+    }
+
+    // deal with errors
+    switch (jpn.err) {
+        case E_OK:
+            if (N_ARRAY != jpn.n->type) {
+                RedisModule_ReplyWithError(ctx, REJSON_ERROR_TYPE_NOT_ARRAY);
+                goto error;
+            }
+            break;
+        case E_BADTYPE:
+            RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_BADTYPE);
+            goto error;
+        case E_NOINDEX:
+            RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_NOINDEX);
+            goto error;
+        case E_NOKEY:
+            RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_NOKEY);
+            goto error;
+        case E_INFINDEX:
+            RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_INFINDEX);
+            goto error;
+        default:
+            RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_UNKNOWN);
+            goto error;
+    }  // switch (jpn.err)
+
+    // JSON must be valid
+    size_t jsonlen;
+    const char *json = RedisModule_StringPtrLen(argv[3], &jsonlen);
+    if (!jsonlen) {
+        RedisModule_ReplyWithError(ctx, REJSON_ERROR_EMPTY_STRING);
+        goto error;
+    }
+
+    // create object from json
+    Object *jo = NULL;
+    char *jerr = NULL;
+    if (JSONOBJECT_OK != CreateNodeFromJSON(json, jsonlen, &jo, &jerr)) {
+        if (jerr) {
+            RedisModule_ReplyWithError(ctx, jerr);
+            RedisModule_Free(jerr);
+        } else {
+            RedisModule_ReplyWithError(ctx, REJSON_ERROR_JSONOBJECT_ERROR);
+        }
+        goto error;
+    }
+
+    // get start & stop, translate negatives
+    long long start = 0, stop = -1;
+    if (argc > 4) {
+        if (REDISMODULE_OK != RedisModule_StringToLongLong(argv[4], &start)) {
+            RedisModule_ReplyWithError(ctx, REJSON_ERROR_INDEX_INVALID);
+            goto error;
+        }
+        if (argc > 5) {
+            if (REDISMODULE_OK != RedisModule_StringToLongLong(argv[5], &stop)) {
+                RedisModule_ReplyWithError(ctx, REJSON_ERROR_INDEX_INVALID);
+                goto error;
+            }
+        }
+    }
+
+    RedisModule_ReplyWithLongLong(ctx, Node_ArrayIndex(jpn.n, jo, (int)start, (int)stop));
+
+    JSONPathNode_Free(&jpn);
+    return REDISMODULE_OK;
+
+error:
+    JSONPathNode_Free(&jpn);
+    return REDISMODULE_ERR;
+}
+
 int RedisModule_OnLoad(RedisModuleCtx *ctx) __attribute__((visibility("default")));
 int RedisModule_OnLoad(RedisModuleCtx *ctx) {
     // Register the module
@@ -895,6 +996,10 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx) {
         return REDISMODULE_ERR;
 
     if (RedisModule_CreateCommand(ctx, "json.insert", JSONInsert_RedisCommand, "write", 1, 1, 1) ==
+        REDISMODULE_ERR)
+        return REDISMODULE_ERR;
+
+    if (RedisModule_CreateCommand(ctx, "json.index", JSONIndex_RedisCommand, "readonly", 1, 1, 1) ==
         REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
