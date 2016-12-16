@@ -27,6 +27,15 @@ docs = {
         'int': 42,
         'float': -1.2,
     },
+    'values': {
+        'unicode': 'string value',
+        'NoneType': None,
+        'bool': True,
+        'int': 42,
+        'float': -1.2,
+        'dict': {},
+        'list': []
+    },
     'types': {
         'null':     None,
         'boolean':  False,
@@ -110,15 +119,29 @@ class JSONTestCase(ModuleTestCase(module_path='../../lib/rejson.so', redis_path=
             with self.assertRaises(redis.exceptions.ResponseError) as cm:
                 r.execute_command('JSON.GET', 'test', '.key5["moo"]')
 
-    def testGetPartsOfScalarsDocument(self):
+            with self.assertRaises(redis.exceptions.ResponseError) as cm:
+                r.execute_command('JSON.GET', 'test', '.bool', '.key5["moo"]')
+
+            with self.assertRaises(redis.exceptions.ResponseError) as cm:
+                r.execute_command('JSON.GET', 'test', '.key5["moo"]', '.bool')
+
+    def testGetPartsOfValuesDocumentOneByOne(self):
         with self.redis() as r:
             r.delete('test')
             self.assertOk(r.execute_command('JSON.SET', 'test',
-                                            '.', json.dumps(docs['scalars'])))
-            for k, v in docs['scalars'].iteritems():
+                                            '.', json.dumps(docs['values'])))
+            for k, v in docs['values'].iteritems():
                 data = json.loads(r.execute_command('JSON.GET', 'test', '.{}'.format(k)))
                 self.assertEqual(str(type(data)), '<type \'{}\'>'.format(k))
                 self.assertEqual(data, v)
+
+    def testGetPartsOfValuesDocumentMultiple(self):
+        with self.redis() as r:
+            r.delete('test')
+            self.assertOk(r.execute_command('JSON.SET', 'test',
+                                            '.', json.dumps(docs['values'])))
+            data = json.loads(r.execute_command('JSON.GET', 'test', *docs['values'].keys()))
+            self.assertDictEqual(data, docs['values'])
 
     def testMgetCommand(self):
         with self.redis() as r:
