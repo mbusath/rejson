@@ -281,6 +281,15 @@ class JSONTestCase(ModuleTestCase(module_path='../../lib/rejson.so', redis_path=
             with self.assertRaises(redis.exceptions.ResponseError) as cm:
                 r.execute_command('JSON.LEN', 'test', '.arr[-inf]')
 
+    def testKeysCommand(self):
+        with self.redis() as r:
+            r.delete('test')
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.', json.dumps(docs['types'])))
+            data = r.execute_command('JSON.KEYS', 'test', '.')
+            self.assertEqual(len(data), len(docs['types']))
+            for k in data:
+                self.assertTrue(k in docs['types'])
+
     def testIncrCommand(self):
         with self.redis() as r:
             r.delete('test')

@@ -142,8 +142,9 @@ int NodeFromJSONPath(Node *root, const RedisModuleString *path, JSONPathNode_t *
     return PARSE_OK;
 }
 
-// == Module Object commands ==
-/* OBJ.GET <key>
+// == Module JSON commands ==
+
+/* JSON.RESP <key>
  *
  * Returns the RESP representation of the object at 'key'. Because RESP's only container is an
  * array, object containers are prefixed with a distinctive character indicating their type as
@@ -152,7 +153,7 @@ int NodeFromJSONPath(Node *root, const RedisModuleString *path, JSONPathNode_t *
  *  '[' means that the following entries are an array
  * Boolean literals and (dictionary key names are simple strings. Strings are always quoted.
  */
-int ObjectGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+int JSONResp_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if ((argc != 2)) return RedisModule_WrongArity(ctx);
     RedisModule_AutoMemory(ctx);
 
@@ -171,11 +172,9 @@ int ObjectGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
     return REDISMODULE_OK;
 }
 
-// == Module JSON commands ==
-
 /* JSON.TYPE <key> <path>
  * Reports the type of JSON element at `path` in `key`
- * Reply: Simple string
+ * Reply: Simple string, specifically the type or 'none' if key/path do not exist
 */
 int JSONType_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     // type names
@@ -335,6 +334,74 @@ int JSONLen_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
                 goto error;
         }  // switch (jpn.n->type)
     }      // else
+
+    JSONPathNode_Free(&jpn);
+    return REDISMODULE_OK;
+
+error:
+    JSONPathNode_Free(&jpn);
+    return REDISMODULE_ERR;
+}
+
+/* JSON.KEYS <key> <path>
+ * Returns the keys in the object referenced by `path`.
+ * If the object is empty or either key or path do not exist, null is returned.
+ * Reply: Array reply, specifically the key names
+*/
+int JSONKeys_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    // check args
+    if (argc != 3) return RedisModule_WrongArity(ctx);
+    RedisModule_AutoMemory(ctx);
+
+    // key must be empty or a JSON type
+    RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ);
+    int type = RedisModule_KeyType(key);
+    if (REDISMODULE_KEYTYPE_EMPTY == type) {
+        RedisModule_ReplyWithNull(ctx);
+        return REDISMODULE_OK;
+    }
+    if (RedisModule_ModuleTypeGetType(key) != JsonType) {
+        RedisModule_ReplyWithError(ctx, REDISMODULE_ERRORMSG_WRONGTYPE);
+        return REDISMODULE_ERR;
+    }
+
+    // validate path
+    JSONPathNode_t jpn;
+    Object *objRoot = RedisModule_ModuleTypeGetValue(key);
+    if (PARSE_OK != NodeFromJSONPath(objRoot, argv[2], &jpn)) {
+        RedisModule_ReplyWithError(ctx, REJSON_ERROR_PARSE_PATH);
+        return REDISMODULE_ERR;
+    }
+
+    // deal with path errors
+    switch (jpn.err) {
+        case E_OK:
+            break;
+        case E_BADTYPE:
+            RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_BADTYPE);
+            goto error;
+        case E_NOINDEX:
+            RedisModule_ReplyWithNull(ctx);
+            goto error;
+        case E_NOKEY:
+            RedisModule_ReplyWithNull(ctx);
+            goto error;
+        case E_INFINDEX:
+            RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_INFINDEX);
+            goto error;
+        default:
+            RedisModule_ReplyWithError(ctx, REJSON_ERROR_PATH_UNKNOWN);
+            goto error;
+    }  // switch (err)
+
+    if (jpn.n && N_DICT == jpn.n->type) {
+        RedisModule_ReplyWithArray(ctx, jpn.n->value.dictval.len);
+        for (int i = 0; i < jpn.n->value.dictval.len; i++) {
+            RedisModule_ReplyWithSimpleString(ctx, jpn.n->value.dictval.entries[i]->value.kvval.key);
+        }
+    } else {
+        RedisModule_ReplyWithError(ctx, REJSON_ERROR_TYPE_INVALID);
+    }
 
     JSONPathNode_Free(&jpn);
     return REDISMODULE_OK;
@@ -1191,11 +1258,11 @@ int JSONTrim_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
 
     // get start & stop
     long long start, stop, left, right;
-    long long len = (long long) jpn.n->value.arrval.len;
+    long long len = (long long)jpn.n->value.arrval.len;
     if (REDISMODULE_OK != RedisModule_StringToLongLong(argv[3], &start)) {
         RedisModule_ReplyWithError(ctx, REJSON_ERROR_INDEX_INVALID);
         goto error;
-    }    
+    }
     if (REDISMODULE_OK != RedisModule_StringToLongLong(argv[4], &stop)) {
         RedisModule_ReplyWithError(ctx, REJSON_ERROR_INDEX_INVALID);
         goto error;
@@ -1204,7 +1271,7 @@ int JSONTrim_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
     // convert negative indexes
     if (start < 0) start = MAX(len + start, 0);
     if (stop < 0) stop = len + stop;
-    
+
     if (start > stop || start >= len) {
         // empty the array
         left = len;
@@ -1244,7 +1311,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx) {
     JsonType = RedisModule_CreateDataType(ctx, JSONTYPE_NAME, JSONTYPE_ENCODING_VERSION, &tm);
 
     /* Object commands. */
-    if (RedisModule_CreateCommand(ctx, "obj.get", ObjectGet_RedisCommand, "readonly", 1, 1, 1) ==
+    if (RedisModule_CreateCommand(ctx, "json.resp", JSONResp_RedisCommand, "readonly", 1, 1, 1) ==
         REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
@@ -1254,6 +1321,10 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx) {
         return REDISMODULE_ERR;
 
     if (RedisModule_CreateCommand(ctx, "json.len", JSONLen_RedisCommand, "readonly", 1, 1, 1) ==
+        REDISMODULE_ERR)
+        return REDISMODULE_ERR;
+
+    if (RedisModule_CreateCommand(ctx, "json.keys", JSONKeys_RedisCommand, "readonly", 1, 1, 1) ==
         REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
