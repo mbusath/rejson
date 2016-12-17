@@ -447,7 +447,7 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
     const char *json = RedisModule_StringPtrLen(argv[3], &jsonlen);
     if (!jsonlen) {
         RedisModule_ReplyWithError(ctx, REJSON_ERROR_EMPTY_STRING);
-        goto error;
+        return REDISMODULE_ERR;
     }
 
     // Create object from json
