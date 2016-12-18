@@ -428,7 +428,7 @@ error:
 }
 
 /* JSON.SET <key> <path> <json>
- * Creates or updates the JSON object in `key`
+ * Creates or updates the JSON in `key`
  * Paths always begin at the root (`.`). For paths referencing anything deeper than the root, the
  * starting `.`is optional.
  * Any path from the root begins with a key token. Key tokens are specfied by name and are separated
@@ -436,7 +436,7 @@ error:
  * `bar` in the dictionary `foo`.
  * Tokens can also be elements from lists and are specified by their 0-based index in brackets (e.g.
  * `.arr[1]`). Negative index values are treated as is with Python's lists.
- * For new keys, `path` must be the root and `json` must be a JSON object.
+ * For new keys, `path` must be the root.
  * For existing keys, when the entire  `path` exists, the value it contains is replaced with the
  * `json` value. A key with the value is created when only the last token in the path isn't resolved
  * and its parent is a dictionary. An value is prepended or appended to the parent array if the
@@ -493,11 +493,6 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
         // new keys must be created at the root
         if (E_OK != jpn.err || !isRootPath) {
             RedisModule_ReplyWithError(ctx, REJSON_ERROR_NEW_NOT_ROOT);
-            goto error;
-        }
-        // new keys must be objects, remember that NULL nodes are possible
-        if (!jo || (N_DICT != jo->type)) {
-            RedisModule_ReplyWithError(ctx, REJSON_ERROR_NEW_NOT_OBJECT);
             goto error;
         }
         RedisModule_ModuleTypeSetValue(key, JSONType, jo);

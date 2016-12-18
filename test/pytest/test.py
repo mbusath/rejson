@@ -51,52 +51,38 @@ docs = {
 class JSONTestCase(ModuleTestCase(module_path='../../lib/rejson.so', redis_path='../../../redis/src/redis-server')):
     # TODO: inject paths from upper
 
-    def testSetRootWithNotObjectShouldFail(self):
-        with self.redis() as r:
-            r.delete('test')
-            with self.assertRaises(redis.exceptions.ResponseError) as cm:
-                r.execute_command('JSON.SET', 'test', '.', '"string value"')
-            self.assertNotExists(r, 'test')
-
-            with self.assertRaises(redis.exceptions.ResponseError) as cm:
-                r.execute_command('JSON.SET', 'test', '.', '1')
-
-            with self.assertRaises(redis.exceptions.ResponseError) as cm:
-                r.execute_command('JSON.SET', 'test', '.', '-1.0101')
-
-            with self.assertRaises(redis.exceptions.ResponseError) as cm:
-                r.execute_command('JSON.SET', 'test', '.', 'true')
-
-            with self.assertRaises(redis.exceptions.ResponseError) as cm:
-                r.execute_command('JSON.SET', 'test', '.', 'null')
-
-            with self.assertRaises(redis.exceptions.ResponseError) as cm:
-                r.execute_command('JSON.SET', 'test', '.', '"[1, 2, 3]"')
-
     def testSetRootWithIllegalValuesShouldFail(self):
         with self.redis() as r:
+            illegal = ['{', '}', '[', ']', '{]', '[}', '\\', '\\\\', '',
+                       ' ', '\\"', '\'', '\[', '\x00', '\x0a', '\x0c', '\xff']
             r.delete('test')
-
-            # illegal = ['{', '}', '[', ']', '{]', '[}', '\\', '\\\\', '', ' ', '\\"', '\'', '\[']
-            illegal = ['}', ']', '{]', '[}', '\\', '\\\\', '', ' ', '\\"', '\'', '\[']
             for i in illegal:
                 with self.assertRaises(redis.exceptions.ResponseError) as cm:
                     r.execute_command('JSON.SET', 'test', '.', i)
                 self.assertNotExists(r, 'test')
 
-    def testSetRootWithEmptyObjectShouldSucceed(self):
+    def testSetRootWithJSONValuesShouldSucceed(self):
+        """Test that the root of a JSON key can be set with any valid JSON"""
         with self.redis() as r:
-            r.delete('test')
-            self.assertOk(r.execute_command('JSON.SET', 'test', '.', '{}'))
-            self.assertExists(r, 'test')
+            for v in ['"string"', '1', '-2', '3.14', 'null', 'true', 'false', '[]', '{}']:
+                r.delete('test')
+                self.assertOk(r.execute_command('JSON.SET', 'test', '.', v))
+                self.assertExists(r, 'test')
+                self.assertEqual(r.execute_command('JSON.GET', 'test'), v)
 
     def testSetReplaceRootShouldSucceed(self):
+        """Test that replacing the root of an existing key with a valid object succeeds"""
         with self.redis() as r:
             r.delete('test')
             self.assertOk(r.execute_command('JSON.SET', 'test', '.', json.dumps(docs['basic'])))
             self.assertOk(r.execute_command('JSON.SET', 'test', '.', json.dumps(docs['simple'])))
             raw = r.execute_command('JSON.GET', 'test', '.')
             self.assertDictEqual(json.loads(raw), docs['simple'])
+            for k, v in docs['values'].iteritems():
+                self.assertOk(r.execute_command('JSON.SET', 'test', '.', json.dumps(v)))
+                data = json.loads(r.execute_command('JSON.GET', 'test', '.'))
+                self.assertEqual(str(type(data)), '<type \'{}\'>'.format(k))
+                self.assertEqual(data, v)
 
     def testSetGetWholeBasicDocumentShouldBeEqual(self):
         with self.redis() as r:
@@ -198,7 +184,7 @@ class JSONTestCase(ModuleTestCase(module_path='../../lib/rejson.so', redis_path=
             self.assertEqual(r.execute_command('JSON.TYPE', 'test', '.arr'), 'array')
             self.assertEqual(r.execute_command('JSON.DEL', 'test', '.arr'), 1)
             self.assertEqual(r.execute_command('JSON.LEN', 'test', '.'), 2)
-            self.assertEqual(r.execute_command('JSON.DEL', 'test', '.'), 1) 
+            self.assertEqual(r.execute_command('JSON.DEL', 'test', '.'), 1)
             self.assertEqual(r.execute_command('JSON.GET', 'test'), '{}')
 
     def testDictionaryCRUD(self):
@@ -307,10 +293,10 @@ class JSONTestCase(ModuleTestCase(module_path='../../lib/rejson.so', redis_path=
 
     def testTypeCommand(self):
         with self.redis() as r:
-            r.delete('test')
-            self.assertOk(r.execute_command('JSON.SET', 'test', '.', json.dumps(docs['types'])))
             for k, v in docs['types'].iteritems():
-                reply = r.execute_command('JSON.TYPE', 'test', '.{}'.format(k))
+                r.delete('test')
+                self.assertOk(r.execute_command('JSON.SET', 'test', '.', json.dumps(v)))
+                reply = r.execute_command('JSON.TYPE', 'test', '.')
                 self.assertEqual(reply, k)
 
     def testLenCommand(self):

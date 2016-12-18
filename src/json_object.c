@@ -106,7 +106,7 @@ int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err) {
      * Copying is necc. evil to avoid messing w/ non-standard string implementations (e.g. sds), but
      * forgivable because most literals are supposed to be short-ish.
     */
-    if ((is_literal = ('{' != _buf[_off]) && ('[' != _buf[_off]))) {
+    if ((is_literal = ('{' != _buf[_off]) && ('[' != _buf[_off]) && _off < _len)) {
         _len = _len - _off + 2;
         _buf = malloc(_len * sizeof(char));
         _buf[0] = '[';
@@ -131,7 +131,8 @@ int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err) {
 
     /* Finalize. */
     int rc = JSONOBJECT_OK;
-    if (JSONSL_ERROR_SUCCESS == joctx->err) {
+    // success alone isn't an assurance, verify there's something in there too
+    if (JSONSL_ERROR_SUCCESS == joctx->err && jsn->stack[jsn->level].nelem) {
         // extract the literal and discard the wrapper array
         if (is_literal) {
             Node_ArrayItem(joctx->nodes[0], 0, node);
@@ -146,8 +147,16 @@ int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err) {
         rc = JSONOBJECT_ERROR;
         if (err) {
             sds serr = sdsempty();
-            serr = sdscatprintf(serr, "ERR JSON lexer %s error at position %zd",
-                                jsonsl_strerror(joctx->err), joctx->errpos + 1);
+            // TODO: trim buf to relevant position and show it, careful about returning \n in err!
+            if (JSONSL_ERROR_SUCCESS != joctx->err) {
+                // if we have a lexer error lets return it
+                serr = sdscatprintf(serr, "ERR JSON lexer %s error at position %zd",
+                                    jsonsl_strerror(joctx->err), joctx->errpos + 1);
+            } else if (!jsn->stack[jsn->level].nelem) {
+                // parsing went ok so far but it didn't yield anything substantial at the end
+                serr = sdscatprintf(serr, "ERR JSON lexer found no elements in level %d position %zd",
+                                    jsn->level, jsn->pos);
+            }
             *err = strdup(serr);
             sdsfree(serr);
         }
@@ -248,7 +257,7 @@ void _JSONSerialize_BeginValue(Node *n, void *ctx) {
                 else if (fabs(n->value.numval) < 1.0e-6 || fabs(n->value.numval) > 1.0e9)
                     b->buf = sdscatprintf(b->buf, "%e", n->value.numval);
                 else
-                    b->buf = sdscatprintf(b->buf, "%f", n->value.numval);
+                    b->buf = sdscatprintf(b->buf, "%g", n->value.numval);
                 break;
             case N_STRING:
                 _JSONSerialize_StringValue(n, b);
