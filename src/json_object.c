@@ -1,9 +1,6 @@
 #include "json_object.h"
 /* Open issues:
 - move jsonsl to deps
-- move include files to include
-- consider replacing jsonsl with RapidJSON
-- UTF?
 */
 
 /* === Parser === */
@@ -134,15 +131,7 @@ int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err) {
 
     /* Finalize. */
     int rc = JSONOBJECT_OK;
-
-    if (!is_literal && 1 == len) { // work around jsonsl issue of accepting '{' and '[' as valid
-        rc = JSONOBJECT_ERROR;
-        Node_Free(_popNode(joctx));
-        // report the error if the optional arg is passed
-        if (err) {
-            *err = strdup("ERR JSON lexer error at position 1: unhappy ending for object or array");
-        }        
-    } else if (JSONSL_ERROR_SUCCESS == joctx->err) {
+    if (JSONSL_ERROR_SUCCESS == joctx->err) {
         // extract the literal and discard the wrapper array
         if (is_literal) {
             Node_ArrayItem(joctx->nodes[0], 0, node);
@@ -157,10 +146,8 @@ int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err) {
         rc = JSONOBJECT_ERROR;
         if (err) {
             sds serr = sdsempty();
-            if (len > 1) {
-                serr = sdscatprintf(serr, "ERR JSON lexer error at position %zd: %s", joctx->errpos + 1,
-                                    jsonsl_strerror(joctx->err));
-            }
+            serr = sdscatprintf(serr, "ERR JSON lexer %s error at position %zd",
+                                jsonsl_strerror(joctx->err), joctx->errpos + 1);
             *err = strdup(serr);
             sdsfree(serr);
         }
@@ -356,32 +343,27 @@ void SerializeNodeToJSON(const Node *node, const JSONSerializeOpt *opt, sds *jso
     free(b);
 }
 
+// clang-format off
 // from jsonsl.c
 /**
  * This table contains entries for the allowed whitespace as per RFC 4627
  */
 static int _AllowedWhitespace[0x100] = {
-    /* 0x00 */ 0,             0, 0, 0, 0, 0, 0, 0, 0,                            /* 0x08 */
-    /* 0x09 */ 1 /* <TAB> */,                                                    /* 0x09 */
-    /* 0x0a */ 1 /* <LF> */,                                                     /* 0x0a */
-    /* 0x0b */ 0,             0,                                                 /* 0x0c */
-    /* 0x0d */ 1 /* <CR> */,                                                     /* 0x0d */
-    /* 0x0e */ 0,             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, /* 0x1f */
-    /* 0x20 */ 1 /* <SP> */,                                                     /* 0x20 */
-    /* 0x21 */ 0,             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0,                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, /* 0x40 */
-    /* 0x41 */ 0,             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0,                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, /* 0x60 */
-    /* 0x61 */ 0,             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0,                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, /* 0x80 */
-    /* 0x81 */ 0,             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0,                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, /* 0xa0 */
-    /* 0xa1 */ 0,             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0,                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, /* 0xc0 */
-    /* 0xc1 */ 0,             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0,                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, /* 0xe0 */
-    /* 0xe1 */ 0,             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0,                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 /* 0xfe */
+    /* 0x00 */ 0,0,0,0,0,0,0,0,0,                                               /* 0x08 */
+    /* 0x09 */ 1 /* <TAB> */,                                                   /* 0x09 */
+    /* 0x0a */ 1 /* <LF> */,                                                    /* 0x0a */
+    /* 0x0b */ 0,0,                                                             /* 0x0c */
+    /* 0x0d */ 1 /* <CR> */,                                                    /* 0x0d */
+    /* 0x0e */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,                             /* 0x1f */
+    /* 0x20 */ 1 /* <SP> */,                                                    /* 0x20 */
+    /* 0x21 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0x40 */
+    /* 0x41 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0x60 */
+    /* 0x61 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0x80 */
+    /* 0x81 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0xa0 */
+    /* 0xa1 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0xc0 */
+    /* 0xc1 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, /* 0xe0 */
+    /* 0xe1 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0      /* 0xfe */
 };
 
 static int _IsAllowedWhitespace(unsigned c) { return c == ' ' || _AllowedWhitespace[c & 0xff]; }
+// clang-format on

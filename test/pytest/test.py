@@ -54,12 +54,9 @@ class JSONTestCase(ModuleTestCase(module_path='../../lib/rejson.so', redis_path=
     def testSetRootWithNotObjectShouldFail(self):
         with self.redis() as r:
             r.delete('test')
-            try:
+            with self.assertRaises(redis.exceptions.ResponseError) as cm:
                 r.execute_command('JSON.SET', 'test', '.', '"string value"')
-            except redis.exceptions.ResponseError:
-                pass
-            finally:
-                self.assertFalse(r.exists('test'))
+            self.assertNotExists(r, 'test')
 
             with self.assertRaises(redis.exceptions.ResponseError) as cm:
                 r.execute_command('JSON.SET', 'test', '.', '1')
@@ -75,6 +72,17 @@ class JSONTestCase(ModuleTestCase(module_path='../../lib/rejson.so', redis_path=
 
             with self.assertRaises(redis.exceptions.ResponseError) as cm:
                 r.execute_command('JSON.SET', 'test', '.', '"[1, 2, 3]"')
+
+    def testSetRootWithIllegalValuesShouldFail(self):
+        with self.redis() as r:
+            r.delete('test')
+
+            # illegal = ['{', '}', '[', ']', '{]', '[}', '\\', '\\\\', '', ' ', '\\"', '\'', '\[']
+            illegal = ['}', ']', '{]', '[}', '\\', '\\\\', '', ' ', '\\"', '\'', '\[']
+            for i in illegal:
+                with self.assertRaises(redis.exceptions.ResponseError) as cm:
+                    r.execute_command('JSON.SET', 'test', '.', i)
+                self.assertNotExists(r, 'test')
 
     def testSetRootWithEmptyObjectShouldSucceed(self):
         with self.redis() as r:

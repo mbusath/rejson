@@ -16,7 +16,10 @@ def ModuleTestCase(module_path, redis_path = './redis-server'):
         
         def assertExists(self, r, key):
             self.assertTrue(r.exists(key))  
-    
+
+        def assertNotExists(self, r, key):
+            self.assertFalse(r.exists(key))  
+
     return _ModuleTestCase
     
    
