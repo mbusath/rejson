@@ -7,7 +7,10 @@
 #include <string.h>
 #include <sys/param.h>
 #include "../deps/rmutil/vector.h"
-#include "rmalloc.h"
+
+#ifdef REDIS_MODULE_TARGET
+#include "../deps/rmutil/alloc.h"
+#endif
 
 // Return code from successful ops
 #define OBJ_OK 0

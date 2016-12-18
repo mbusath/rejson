@@ -1,6 +1,6 @@
 #include "object_type.h"
 
-#ifndef IS_REDIS_MODULE
+#ifndef REDIS_MODULE_TARGET
 #pragma GCC error "object_type must be compiled as a Redis module"
 #endif
 

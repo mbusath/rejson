@@ -7,7 +7,10 @@
 #include "../deps/rmutil/sds.h"
 #include "jsonsl.h"
 #include "object.h"
-#include "rmalloc.h"
+
+#ifdef REDIS_MODULE_TARGET
+#include "../deps/rmutil/alloc.h"
+#endif
 
 #define JSONOBJECT_OK 0
 #define JSONOBJECT_ERROR 1

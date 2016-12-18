@@ -138,8 +138,9 @@ int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err) {
     if (!is_literal && 1 == len) { // work around jsonsl issue of accepting '{' and '[' as valid
         rc = JSONOBJECT_ERROR;
         Node_Free(_popNode(joctx));
+        // report the error if the optional arg is passed
         if (err) {
-            *err = strdup("JSON lexer error at position 1: where's the rest of it?'");
+            *err = strdup("ERR JSON lexer error at position 1: unhappy ending for object or array");
         }        
     } else if (JSONSL_ERROR_SUCCESS == joctx->err) {
         // extract the literal and discard the wrapper array
@@ -157,7 +158,7 @@ int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err) {
         if (err) {
             sds serr = sdsempty();
             if (len > 1) {
-                serr = sdscatprintf(serr, "JSON lexer error at position %zd: %s", joctx->errpos + 1,
+                serr = sdscatprintf(serr, "ERR JSON lexer error at position %zd: %s", joctx->errpos + 1,
                                     jsonsl_strerror(joctx->err));
             }
             *err = strdup(serr);

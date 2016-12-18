@@ -164,6 +164,35 @@ class JSONTestCase(ModuleTestCase(module_path='../../lib/rejson.so', redis_path=
             self.assertTrue(json.loads(raw[1]))
             self.assertEqual(raw[2], None)
 
+    def testDelCommand(self):
+        with self.redis() as r:
+            r.delete('test')
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.', '{}'))
+            self.assertEqual(r.execute_command('JSON.DEL', 'test', '.'), 1)
+            self.assertExists(r, 'test')
+
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.foo', '"bar"'))
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.baz', '"qux"'))
+            self.assertEqual(r.execute_command('JSON.DEL', 'test', '.baz'), 1)
+            self.assertEqual(r.execute_command('JSON.LEN', 'test', '.'), 1)
+            self.assertEqual(r.execute_command('JSON.TYPE', 'test', '.baz'), 'none')
+            self.assertEqual(r.execute_command('JSON.DEL', 'test', '.foo'), 1)
+            self.assertEqual(r.execute_command('JSON.LEN', 'test', '.'), 0)
+            self.assertEqual(r.execute_command('JSON.TYPE', 'test', '.foo'), 'none')
+            self.assertEqual(r.execute_command('JSON.TYPE', 'test', '.'), 'object')
+
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.foo', '"bar"'))
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.baz', '"qux"'))
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.arr', '[1.2,1,2]'))
+
+            self.assertEqual(r.execute_command('JSON.DEL', 'test', '.arr[1]'), 1)
+            self.assertEqual(r.execute_command('JSON.LEN', 'test', '.'), 3)
+            self.assertEqual(r.execute_command('JSON.TYPE', 'test', '.arr'), 'array')
+            self.assertEqual(r.execute_command('JSON.DEL', 'test', '.arr'), 1)
+            self.assertEqual(r.execute_command('JSON.LEN', 'test', '.'), 2)
+            self.assertEqual(r.execute_command('JSON.DEL', 'test', '.'), 1) 
+            self.assertEqual(r.execute_command('JSON.GET', 'test'), '{}')
+
     def testDictionaryCRUD(self):
         with self.redis() as r:
             r.delete('test')
@@ -254,14 +283,17 @@ class JSONTestCase(ModuleTestCase(module_path='../../lib/rejson.so', redis_path=
     def testTrimCommand(self):
         with self.redis() as r:
             r.delete('test')
-            self.assertOk(r.execute_command('JSON.SET', 'test', 
+            self.assertOk(r.execute_command('JSON.SET', 'test',
                                             '.', '{ "arr": [0, 1, 2, 3, 2, 1, 0] }'))
             self.assertEqual(r.execute_command('JSON.TRIM', 'test', '.arr', 1, -2), 5)
-            self.assertListEqual(json.loads(r.execute_command('JSON.GET', 'test', '.arr')), [1,2,3,2,1])
+            self.assertListEqual(json.loads(r.execute_command(
+                'JSON.GET', 'test', '.arr')), [1, 2, 3, 2, 1])
             self.assertEqual(r.execute_command('JSON.TRIM', 'test', '.arr', 0, 99), 5)
-            self.assertListEqual(json.loads(r.execute_command('JSON.GET', 'test', '.arr')), [1,2,3,2,1])
+            self.assertListEqual(json.loads(r.execute_command(
+                'JSON.GET', 'test', '.arr')), [1, 2, 3, 2, 1])
             self.assertEqual(r.execute_command('JSON.TRIM', 'test', '.arr', 0, 2), 3)
-            self.assertListEqual(json.loads(r.execute_command('JSON.GET', 'test', '.arr')), [1,2,3])
+            self.assertListEqual(json.loads(r.execute_command(
+                'JSON.GET', 'test', '.arr')), [1, 2, 3])
             self.assertEqual(r.execute_command('JSON.TRIM', 'test', '.arr', 99, 2), 0)
             self.assertListEqual(json.loads(r.execute_command('JSON.GET', 'test', '.arr')), [])
 

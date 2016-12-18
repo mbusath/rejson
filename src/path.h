@@ -4,7 +4,10 @@
 #include <string.h>
 #include <sys/param.h>
 #include "object.h"
-#include "rmalloc.h"
+
+#ifdef REDIS_MODULE_TARGET
+#include "../deps/rmutil/alloc.h"
+#endif
 
 /* The type of a path node */
 typedef enum {
