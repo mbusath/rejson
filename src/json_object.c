@@ -133,9 +133,16 @@ int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err) {
     jsonsl_feed(jsn, _buf, _len);
 
     /* Finalize. */
-    int error = 0;
-    if (JSONSL_ERROR_SUCCESS == joctx->err) {
-        /* Extract the literal and discard the list. */
+    int rc = JSONOBJECT_OK;
+
+    if (!is_literal && 1 == len) { // work around jsonsl issue of accepting '{' and '[' as valid
+        rc = JSONOBJECT_ERROR;
+        Node_Free(_popNode(joctx));
+        if (err) {
+            *err = strdup("JSON lexer error at position 1: where's the rest of it?'");
+        }        
+    } else if (JSONSL_ERROR_SUCCESS == joctx->err) {
+        // extract the literal and discard the wrapper array
         if (is_literal) {
             Node_ArrayItem(joctx->nodes[0], 0, node);
             Node_ArraySet(joctx->nodes[0], 0, NULL);
@@ -145,12 +152,16 @@ int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err) {
             *node = _popNode(joctx);
         }
     } else {
-        error = 1;
+        // report the error if the optional arg is passed
+        rc = JSONOBJECT_ERROR;
         if (err) {
-            *err = calloc(JSONOBJECT_MAX_ERROR_STRING_LENGTH, sizeof(char));
-            snprintf(*err, JSONOBJECT_MAX_ERROR_STRING_LENGTH,
-                     "JSON lexer error at position %zd: %s", joctx->errpos + 1,
-                     jsonsl_strerror(joctx->err));
+            sds serr = sdsempty();
+            if (len > 1) {
+                serr = sdscatprintf(serr, "JSON lexer error at position %zd: %s", joctx->errpos + 1,
+                                    jsonsl_strerror(joctx->err));
+            }
+            *err = strdup(serr);
+            sdsfree(serr);
         }
     }
 
@@ -158,7 +169,7 @@ int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err) {
     free(joctx);
     jsonsl_destroy(jsn);
 
-    return error ? JSONOBJECT_ERROR : JSONOBJECT_OK;
+    return rc;
 }
 
 /* === JSON serializer === */
