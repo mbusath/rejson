@@ -182,13 +182,12 @@ int Node_ArrayInsert(Node *arr, int index, Node *sub) {
     t_array *a = &arr->value.arrval;
     t_array *s = &sub->value.arrval;
 
-    // Translate negative index value
-    if (index < 0) {
-        index = MAX(0, (int)a->len + index);
-    }
+    if (index < 0) index = (int)a->len + index;     // translate negative index value
+    if (index < 0) index = 0;                       // not in range always start at the beginning
+    if (index > (int)a->len) index = (int)a->len;   // or appended at the end
 
     __node_ArrayMakeRoomFor(arr, s->len);
-    if (index < (int) a->len) {  //  shift contents to the right
+    if (index < (int) a->len) {                     //  shift contents to the right
         memmove(&a->entries[index + s->len], &a->entries[index], (a->len - index) * sizeof(Node *));
     }
 
@@ -442,6 +441,8 @@ void Node_Print(Node *n, int depth) {
         return;
     }
     switch (n->type) {
+        case N_NULL:    // stop the compiler from complaining
+            break;
         case N_ARRAY: {
             printf("[\n");
             for (int i = 0; i < n->value.arrval.len; i++) {

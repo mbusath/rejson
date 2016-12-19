@@ -215,8 +215,7 @@ class JSONTestCase(ModuleTestCase(module_path='../../lib/rejson.so', redis_path=
     def testArrayCRUD(self):
         with self.redis() as r:
             r.delete('test')
-            self.assertOk(r.execute_command('JSON.SET', 'test', '.', '[]'))
-
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.', '{ "arr": [] }'))
             with self.assertRaises(redis.exceptions.ResponseError) as cm:
                 r.execute_command('JSON.SET', 'test', '.arr[0]', 0)
             with self.assertRaises(redis.exceptions.ResponseError) as cm:
@@ -224,17 +223,19 @@ class JSONTestCase(ModuleTestCase(module_path='../../lib/rejson.so', redis_path=
             with self.assertRaises(redis.exceptions.ResponseError) as cm:
                 r.execute_command('JSON.SET', 'test', '.arr[-1]', 0)
 
-            r.delete('test')
-            self.assertOk(r.execute_command('JSON.SET', 'test', '.', '{ "arr": [1] }'))
-            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr', 0, -1), 2)
+            self.assertEqual(1, r.execute_command('JSON.ARRAPPEND', 'test', '.arr', 1))
+            self.assertEqual(2, r.execute_command('JSON.ARRINSERT', 'test', '.arr', 0, -1))
             data = json.loads(r.execute_command('JSON.GET', 'test', '.arr'))
-            self.assertListEqual(data, [-1, 1,])
-            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr', -1, 0), 3)
+            self.assertListEqual([-1, 1,], data)
+            self.assertEqual(3, r.execute_command('JSON.ARRINSERT', 'test', '.arr', -1, 0))
             data = json.loads(r.execute_command('JSON.GET', 'test', '.arr'))
-            self.assertListEqual(data, [-1, 0, 1,])
-            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr', -3, -3, -2), 5)
+            self.assertListEqual([-1, 0, 1,], data)
+            self.assertEqual(5, r.execute_command('JSON.ARRINSERT', 'test', '.arr', -3, -3, -2))
             data = json.loads(r.execute_command('JSON.GET', 'test', '.arr'))
-            self.assertListEqual(data, [-3, -2, -1, 0, 1,])
+            self.assertListEqual([-3, -2, -1, 0, 1,], data)
+            self.assertEqual(7, r.execute_command('JSON.ARRAPPEND', 'test', '.arr', 2, 3))
+            data = json.loads(r.execute_command('JSON.GET', 'test', '.arr'))
+            self.assertListEqual([-3, -2, -1, 0, 1, 2, 3], data)
 
             # TODO: continue testing
 

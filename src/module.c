@@ -1042,6 +1042,106 @@ error:
     return REDISMODULE_ERR;
 }
 
+/* JSON.ARRAPPEND <key> <path> <json> [<json> ...]
+ * Appends the `json` value(s) into the array at `path` after the last element in it.
+ * Reply: Integer, specifically the array's new size
+*/
+int JSONArrAppend_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    // check args
+    if (argc < 4) return RedisModule_WrongArity(ctx);
+    RedisModule_AutoMemory(ctx);
+
+    // key can't be empty and must be a JSON type
+    RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ | REDISMODULE_WRITE);
+    int type = RedisModule_KeyType(key);
+    if (REDISMODULE_KEYTYPE_EMPTY == type) {
+        // an empty key has no paths so break early
+        RedisModule_ReplyWithError(ctx, REJSON_ERROR_TYPE_NOT_ARRAY);
+        return REDISMODULE_ERR;
+    } else if (RedisModule_ModuleTypeGetType(key) != JSONType) {
+        RedisModule_ReplyWithError(ctx, REDISMODULE_ERRORMSG_WRONGTYPE);
+        return REDISMODULE_ERR;
+    }
+
+    // validate path
+    JSONPathNode_t jpn;
+    Object *objRoot = RedisModule_ModuleTypeGetValue(key);
+    if (PARSE_OK != NodeFromJSONPath(objRoot, argv[2], &jpn)) {
+        RedisModule_ReplyWithError(ctx, REJSON_ERROR_PARSE_PATH);
+        return REDISMODULE_ERR;
+    }
+
+    // deal with path errors
+    if (E_OK != jpn.err) {
+        ReplyWithPathError(ctx, &jpn);
+        goto error;
+    }
+
+    // the target must be an array
+    if (N_ARRAY != NODETYPE(jpn.n)) {
+        sds err = sdsempty();
+        err = sdscatfmt(err, "ERR wrong type of value - expected %s but found %s",
+                        NodeTypeStr(N_ARRAY), NodeTypeStr(NODETYPE(jpn.n)));
+        RedisModule_ReplyWithError(ctx, err);
+        sdsfree(err);
+        goto error;
+    }
+
+    // make an array from the JSON values
+    Node *sub = NewArrayNode(argc - 3);
+    for (int i = 3; i < argc; i++) {
+        // JSON must be valid
+        size_t jsonlen;
+        const char *json = RedisModule_StringPtrLen(argv[i], &jsonlen);
+        if (!jsonlen) {
+            RedisModule_ReplyWithError(ctx, REJSON_ERROR_EMPTY_STRING);
+            Node_Free(sub);
+            goto error;
+        }
+
+        // create object from json
+        Object *jo = NULL;
+        char *jerr = NULL;
+        if (JSONOBJECT_OK != CreateNodeFromJSON(json, jsonlen, &jo, &jerr)) {
+            Node_Free(sub);
+            if (jerr) {
+                RedisModule_ReplyWithError(ctx, jerr);
+                free(jerr);
+            } else {
+                RM_LOG_WARNING(ctx, "%s", REJSON_ERROR_JSONOBJECT_ERROR);
+                RedisModule_ReplyWithError(ctx, REJSON_ERROR_JSONOBJECT_ERROR);
+            }
+            goto error;
+        }
+
+        // append it to the sub array
+        if (OBJ_OK != Node_ArrayAppend(sub, jo)) {
+            Node_Free(jo);
+            Node_Free(sub);
+            RM_LOG_WARNING(ctx, "%s", REJSON_ERROR_INSERT_SUBARRY);
+            RedisModule_ReplyWithError(ctx, REJSON_ERROR_INSERT_SUBARRY);
+            goto error;
+        }
+    }
+
+    // insert the sub array to the target array
+    if (OBJ_OK != Node_ArrayInsert(jpn.n, Node_Length(jpn.n), sub)) {
+        Node_Free(sub);
+        RM_LOG_WARNING(ctx, "%s", REJSON_ERROR_INSERT);
+        RedisModule_ReplyWithError(ctx, REJSON_ERROR_INSERT);
+        goto error;
+    }
+
+    RedisModule_ReplyWithLongLong(ctx, Node_Length(jpn.n));
+
+    JSONPathNode_Free(&jpn);
+    return REDISMODULE_OK;
+
+error:
+    JSONPathNode_Free(&jpn);
+    return REDISMODULE_ERR;
+}
+
 /* JSON.ARRINDEX <key> <path> <scalar> [start] [stop]
  * Returns the lowest index of a scalar value in the array.
  * The optional inclusive start (default 0) and exclusive stop (default 0, meaning the last element
@@ -1180,7 +1280,7 @@ int JSONArrTrim_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
 
     // get start & stop
     long long start, stop, left, right;
-    long long len = (long long) Node_Length(jpn.n);
+    long long len = (long long)Node_Length(jpn.n);
     if (REDISMODULE_OK != RedisModule_StringToLongLong(argv[3], &start)) {
         RedisModule_ReplyWithError(ctx, REJSON_ERROR_INDEX_INVALID);
         goto error;
@@ -1194,11 +1294,11 @@ int JSONArrTrim_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
     if (start < 0) start = len + start;
     if (stop < 0) stop = len + stop;
 
-    if (start < 0) start = 0;               // start at the beginning
-    if (start > stop || start >= len) {     // empty the array
+    if (start < 0) start = 0;            // start at the beginning
+    if (start > stop || start >= len) {  // empty the array
         left = len;
         right = 0;
-    } else {                                // set the boundries
+    } else {  // set the boundries
         left = start;
         if (stop >= len) stop = len - 1;
         right = len - stop - 1;
@@ -1232,29 +1332,14 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx) {
                                  .free = ObjectTypeFree};
     JSONType = RedisModule_CreateDataType(ctx, JSONTYPE_NAME, JSONTYPE_ENCODING_VERSION, &tm);
 
-    /* Main commands. */
+    /* Module commands. */
+    /* Generic JSON type commands. */
     if (RedisModule_CreateCommand(ctx, "json.resp", JSONResp_RedisCommand, "readonly", 1, 1, 1) ==
         REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
     if (RedisModule_CreateCommand(ctx, "json.type", JSONType_RedisCommand, "readonly", 1, 1, 1) ==
         REDISMODULE_ERR)
-        return REDISMODULE_ERR;
-
-    if (RedisModule_CreateCommand(ctx, "json.arrlen", JSONLen_GenericCommand, "readonly", 1, 1,
-                                  1) == REDISMODULE_ERR)
-        return REDISMODULE_ERR;
-
-    if (RedisModule_CreateCommand(ctx, "json.objlen", JSONLen_GenericCommand, "readonly", 1, 1,
-                                  1) == REDISMODULE_ERR)
-        return REDISMODULE_ERR;
-
-    if (RedisModule_CreateCommand(ctx, "json.strlen", JSONLen_GenericCommand, "readonly", 1, 1,
-                                  1) == REDISMODULE_ERR)
-        return REDISMODULE_ERR;
-
-    if (RedisModule_CreateCommand(ctx, "json.objkeys", JSONObjKeys_RedisCommand, "readonly", 1, 1,
-                                  1) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
     if (RedisModule_CreateCommand(ctx, "json.set", JSONSet_RedisCommand, "write deny-oom", 1, 1,
@@ -1273,6 +1358,11 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx) {
         REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
+    if (RedisModule_CreateCommand(ctx, "json.forget", JSONDel_RedisCommand, "write", 1, 1, 1) ==
+        REDISMODULE_ERR)
+        return REDISMODULE_ERR;
+
+    /* JSON number commands. */
     if (RedisModule_CreateCommand(ctx, "json.numincrby", JSONNum_GenericCommand, "write", 1, 1,
                                   1) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
@@ -1281,11 +1371,16 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx) {
                                   1) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
-    if (RedisModule_CreateCommand(ctx, "json.forget", JSONDel_RedisCommand, "write", 1, 1, 1) ==
-        REDISMODULE_ERR)
+    /* JSON array commands matey. */
+    if (RedisModule_CreateCommand(ctx, "json.arrlen", JSONLen_GenericCommand, "readonly", 1, 1,
+                                  1) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
     if (RedisModule_CreateCommand(ctx, "json.arrinsert", JSONArrInsert_RedisCommand,
+                                  "write deny-oom", 1, 1, 1) == REDISMODULE_ERR)
+        return REDISMODULE_ERR;
+
+    if (RedisModule_CreateCommand(ctx, "json.arrappend", JSONArrAppend_RedisCommand,
                                   "write deny-oom", 1, 1, 1) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
@@ -1297,7 +1392,21 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx) {
                                   1) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
-    RM_LOG_WARNING(ctx, "%s v%s [encver %d]", RLMODULE_DESC, RLMODULE_VERSION,
+    /* JSON object commands. */
+    if (RedisModule_CreateCommand(ctx, "json.objlen", JSONLen_GenericCommand, "readonly", 1, 1,
+                                  1) == REDISMODULE_ERR)
+        return REDISMODULE_ERR;
+
+    if (RedisModule_CreateCommand(ctx, "json.objkeys", JSONObjKeys_RedisCommand, "readonly", 1, 1,
+                                  1) == REDISMODULE_ERR)
+        return REDISMODULE_ERR;
+
+    /* JSON string commands. */
+    if (RedisModule_CreateCommand(ctx, "json.strlen", JSONLen_GenericCommand, "readonly", 1, 1,
+                                  1) == REDISMODULE_ERR)
+        return REDISMODULE_ERR;
+
+    RM_LOG_WARNING(ctx, "%s - v%s [encver %d] is standing by", RLMODULE_DESC, RLMODULE_VERSION,
                    JSONTYPE_ENCODING_VERSION);
 
     return REDISMODULE_OK;

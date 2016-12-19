@@ -144,7 +144,7 @@ void Node_Print(Node *n, int depth);
 /** Deletes (and frees) the count of nodes from an array starting at index. */
 int Node_ArrayDelRange(Node *arr, const int index, const int count);
 
-/** Insert nodes in sub to an array before the node at index. If the index is geq the array's'
+/** Insert nodes in sub to an array before the node at index. If the index is geq the array's
  * length the nodes are appended to the end of the array. Negative index values are interpreted as
  * beginning from the end. A negative index geq to the length is assumed as 0.
  * NOTE: the sub array is destroyed. */
