@@ -6,12 +6,38 @@
 #include "../src/path.h"
 #include "minunit.h"
 
+MU_TEST(testNodeString) {
+    // Test creation of an empty C string
+    Node *n1 = NewCStringNode("");
+    mu_check(NULL != n1);
+    mu_assert_int_eq(0, Node_Length(n1));
+    Node_Free(n1);
+
+    // Test creation of an empty buffer string
+    n1 = NewStringNode("", 0);
+    mu_check(NULL != n1);
+    mu_assert_int_eq(0, Node_Length(n1));
+    Node_Free(n1);
+
+    // Test appending strings
+    n1 = NewCStringNode("foo");
+    mu_check(NULL != n1);
+    mu_assert_int_eq(3, Node_Length(n1));
+    Node *n2 = NewStringNode("bar", 3);
+    mu_check(NULL != n2);
+    mu_assert_int_eq(3, Node_Length(n2));
+    mu_assert_int_eq(OBJ_OK, Node_StringAppend(n1, n2));
+    mu_check(NULL != n1);
+    mu_assert_int_eq(6, Node_Length(n1));
+    mu_check(!strncmp(n1->value.strval.data, "foobar", Node_Length(n1)));
+}
+
 MU_TEST(testNodeArray) {
     Node *arr, *arr2, *n;
 
     // Test creation of a typical empty array
     arr = NewArrayNode(0);
-    mu_check(arr != NULL);
+    mu_check(NULL != arr);
     mu_assert_int_eq(Node_Length(arr), 0);
     mu_check(OBJ_ERR == Node_ArrayItem(arr, 0, &n));
 
@@ -364,6 +390,7 @@ MU_TEST(testPathParseRoot) {
 MU_TEST_SUITE(test_object) {
     // MU_SUITE_CONFIGURE(&test_setup, &test_teardown);
 
+    MU_RUN_TEST(testNodeString);
     MU_RUN_TEST(testNodeArray);
     MU_RUN_TEST(testObject);
     MU_RUN_TEST(testPath);

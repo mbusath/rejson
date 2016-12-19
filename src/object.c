@@ -126,6 +126,21 @@ int Node_Length(const Node *n) {
     return -1;
 }
 
+int Node_StringAppend(Node *dst, Node *src) {
+    t_string *d = &dst->value.strval;
+    t_string *s = &src->value.strval;
+
+    char *newval = calloc(d->len + s->len, sizeof(char));
+    strncpy(newval, d->data, d->len);
+    strncpy(&newval[d->len], s->data, s->len);
+
+    free((char *)d->data);
+    d->data = newval;
+    d->len += s->len;
+
+    return OBJ_OK;
+}
+
 int Node_ArrayDelRange(Node *arr, const int index, const int count) {
     t_array *a = &arr->value.arrval;
 

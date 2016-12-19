@@ -21,7 +21,7 @@
 * NodeType represents the type of a node in an object.
 */
 typedef enum {
-    N_NULL = 0x1,  // only used in masks
+    N_NULL = 0x1,       // used in masks and consistent type checking
     N_STRING = 0x2,
     N_NUMBER = 0x4,
     N_INTEGER = 0x8,
@@ -140,6 +140,9 @@ int Node_Length(const Node *n);
 
 /** Pretty-print a node. Not JSON compliant but will produce something almost JSON-ish */
 void Node_Print(Node *n, int depth);
+
+/** Concatenates the src string node to the dst string node. */
+int Node_StringAppend(Node *dst, Node *src);
 
 /** Deletes (and frees) the count of nodes from an array starting at index. */
 int Node_ArrayDelRange(Node *arr, const int index, const int count);
