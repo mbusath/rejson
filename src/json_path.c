@@ -42,12 +42,14 @@ int _tokenizePath(const char *json, size_t len, SearchPath *path) {
                     // skip to the beginnning of the key
                     tok.s++;
                     st = S_KEY;
-                } else if (isdigit(c)) {  // digit after bracket means numeric index
+                } else if (isdigit(c)) {
+                    // digit after bracket means numeric index
                     tok.len++;
                     st = S_NUMBER;
-                } else if ('-' == c || '+' == c) {
+                } else if ('-' == c) {
+                    // this could be the beginning of a negative index
                     tok.len++;
-                    st = S_SIGN;
+                    st = S_MINUS;
                 } else {
                     goto syntaxerror;
                 }
@@ -64,7 +66,7 @@ int _tokenizePath(const char *json, size_t len, SearchPath *path) {
                 }
                 break;
 
-            // we're within a number
+            // we're within a number (array index)
             case S_NUMBER:
                 if (isdigit(c)) {
                     tok.len++;
@@ -114,20 +116,11 @@ int _tokenizePath(const char *json, size_t len, SearchPath *path) {
                 tok.len++;
                 break;
 
-            // we're within a signed index or an infinite
-            case S_SIGN:
-                // a digit means we're back to numbers
+            // we're within a negative index so we expect a digit now
+            case S_MINUS:
                 if (isdigit(c)) {
                     tok.len++;
                     st = S_NUMBER;
-                } else if ('i' == c && offset < len - 3 && *(pos + 1) == 'n' && *(pos + 2) == 'f' &&
-                           *(pos + 3) == ']') {  // maybe we're `inf]`
-                    tok.type = T_INFINITE;
-                    tok.len = 4;
-                    pos += 4;
-                    offset += 4;
-                    st = S_NULL;
-                    goto tokenend;
                 } else {
                     goto syntaxerror;
                 }
@@ -135,6 +128,7 @@ int _tokenizePath(const char *json, size_t len, SearchPath *path) {
         }  // switch (st)
         offset++;
         pos++;
+        
         // ident string must end if len reached
         if (S_IDENT == st && len == offset) {
             st = S_NULL;
@@ -153,8 +147,6 @@ int _tokenizePath(const char *json, size_t len, SearchPath *path) {
             }
             if ('-' == tok.s[0]) num = -num;
             SearchPath_AppendIndex(path, num);
-        } else if (T_INFINITE == tok.type) {
-            SearchPath_AppendInfiniteIndex(path, '+' == tok.s[0]);
         } else if (T_KEY == tok.type) {
             if (1 == offset == len && '.' == c) {  // check for root
                 SearchPath_AppendRoot(path);

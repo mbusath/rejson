@@ -10,13 +10,12 @@ Node *__pathNode_eval(PathNode *pn, Node *n, PathError *err) {
         Node *rn = NULL;
         if (NT_INDEX == pn->type) {
             int index = pn->value.index;
-            if (index < 0) index = n->value.arrval.len + index;
+            // translate negative values
+            if (index < 0) index = n->value.arrval.len + index;            
             int rc = Node_ArrayItem(n, index, &rn);
             if (rc != OBJ_OK) {
                 *err = E_NOINDEX;
             }
-        } else if (NT_INFINITE == pn->type) {
-            *err = E_INFINDEX;
         } else {
             goto badtype;
         }
@@ -84,13 +83,6 @@ void __searchPath_append(SearchPath *p, PathNode pn) {
     }
 
     p->nodes[p->len++] = pn;
-}
-
-void SearchPath_AppendInfiniteIndex(SearchPath *p, int positive) {
-    PathNode pn;
-    pn.type = NT_INFINITE;
-    pn.value.positive = positive;
-    __searchPath_append(p, pn);
 }
 
 void SearchPath_AppendIndex(SearchPath *p, int idx) {

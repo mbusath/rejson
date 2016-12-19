@@ -215,43 +215,26 @@ class JSONTestCase(ModuleTestCase(module_path='../../lib/rejson.so', redis_path=
     def testArrayCRUD(self):
         with self.redis() as r:
             r.delete('test')
-            self.assertOk(r.execute_command('JSON.SET', 'test', '.', '{ "arr": [] }'))
-            self.assertOk(r.execute_command('JSON.SET', 'test', '.arr[-inf]', 0))
-            self.assertOk(r.execute_command('JSON.SET', 'test', '.arr[+inf]', 1))
-            self.assertOk(r.execute_command('JSON.SET', 'test', '.arr[0]', 0.1))
-            self.assertOk(r.execute_command('JSON.SET', 'test', '.arr[-1]', 0.9))
-            data = json.loads(r.execute_command('JSON.GET', 'test', '.arr'))
-            self.assertListEqual(data, [0.1, 0.9])
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.', '[]'))
 
             with self.assertRaises(redis.exceptions.ResponseError) as cm:
-                r.execute_command('JSON.SET', 'test', '.arr[9]', 0)
-
+                r.execute_command('JSON.SET', 'test', '.arr[0]', 0)
             with self.assertRaises(redis.exceptions.ResponseError) as cm:
-                r.execute_command('JSON.SET', 'test', '.arr[-9]', 0)
+                r.execute_command('JSON.SET', 'test', '.arr[19]', 0)
+            with self.assertRaises(redis.exceptions.ResponseError) as cm:
+                r.execute_command('JSON.SET', 'test', '.arr[-1]', 0)
 
             r.delete('test')
             self.assertOk(r.execute_command('JSON.SET', 'test', '.', '{ "arr": [1] }'))
-            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr[0]', 0), 2)
-            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr[-inf]', -1), 3)
-            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr[+inf]', 2), 4)
-            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr[-4]', -2), 5)
-            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr[6]', 4), 6)
-            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr[-1]', 3), 7)
+            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr', 0, -1), 2)
             data = json.loads(r.execute_command('JSON.GET', 'test', '.arr'))
-            self.assertListEqual(data, [-2, -1, 0, 1, 2, 3, 4])
-
-            r.delete('test')
-            self.assertOk(r.execute_command('JSON.SET', 'test', '.', '{ "arr": [] }'))
-            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr[0]', 2), 1)
-            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr[-1]', 0, 1), 3)
-            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr[-inf]', -2, -1), 5)
-            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr[+inf]', 3, 6), 7)
-            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr[6]', 4, 5), 9)
+            self.assertListEqual(data, [-1, 1,])
+            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr', -1, 0), 3)
             data = json.loads(r.execute_command('JSON.GET', 'test', '.arr'))
-            self.assertListEqual(data, [-2, -1, 0, 1, 2, 3, 4, 5, 6])
-
-            with self.assertRaises(redis.exceptions.ResponseError) as cm:
-                r.execute_command('JSON.ARRINSERT', 'test', '.arr', 0)
+            self.assertListEqual(data, [-1, 0, 1,])
+            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr', -3, -3, -2), 5)
+            data = json.loads(r.execute_command('JSON.GET', 'test', '.arr'))
+            self.assertListEqual(data, [-3, -2, -1, 0, 1,])
 
             # TODO: continue testing
 
@@ -266,12 +249,12 @@ class JSONTestCase(ModuleTestCase(module_path='../../lib/rejson.so', redis_path=
             self.assertEqual(r.execute_command('JSON.ARRINDEX', 'test', '.arr', 0, 1), 6)
             self.assertEqual(r.execute_command('JSON.ARRINDEX', 'test', '.arr', 0, -1), 6)
             self.assertEqual(r.execute_command('JSON.ARRINDEX', 'test', '.arr', 0, 6), 6)
-            self.assertEqual(r.execute_command('JSON.ARRINDEX', 'test', '.arr', 0, 4, -1), 6)
-            self.assertEqual(r.execute_command('JSON.ARRINDEX', 'test', '.arr', 0, 5, -2), -1)
+            self.assertEqual(r.execute_command('JSON.ARRINDEX', 'test', '.arr', 0, 4, -0), 6)
+            self.assertEqual(r.execute_command('JSON.ARRINDEX', 'test', '.arr', 0, 5, -1), -1)
             self.assertEqual(r.execute_command('JSON.ARRINDEX', 'test', '.arr', 2, -2, 6), -1)
             self.assertEqual(r.execute_command('JSON.ARRINDEX', 'test', '.arr', '"foo"'), -1)
 
-            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr[4]', '[4]'), 8)
+            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr', 4, '[4]'), 8)
             self.assertEqual(r.execute_command('JSON.ARRINDEX', 'test', '.arr', 3), 3)
             self.assertEqual(r.execute_command('JSON.ARRINDEX', 'test', '.arr', 2, 3), 5)
             self.assertEqual(r.execute_command('JSON.ARRINDEX', 'test', '.arr', '[4]'), -1)

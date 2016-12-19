@@ -64,10 +64,11 @@
 #define REJSON_ERROR_INSERT "ERR could not insert into array"
 #define REJSON_ERROR_INSERT_NONTERMINAL "ERR can not insert into a non terminal list"
 #define REJSON_ERROR_INSERT_SUBARRY "ERR could not not prepare the insert operation"
-#define REJSON_ERROR_INDEX_INVALID "ERR invalid array index"
+#define REJSON_ERROR_INDEX_INVALID "ERR array index must be an integer"
 #define REJSON_ERROR_TARGET_PATH_NAN "ERR target path is not a number type"
 #define REJSON_ERROR_VALUE_NAN "ERR value is not a number type"
 #define REJSON_ERROR_VALUE_NOT_DICT "ERR value is not an object type"
+#define REJSON_ERROR_INDEX_OUTOFRANGE "ERR index out of range"
 
 // == Helpers ==
 #define NODEVALUE_AS_DOUBLE(n) (N_INTEGER == n->type ? (double)n->value.intval : n->value.numval)
@@ -163,10 +164,6 @@ void ReplyWithPathError(RedisModuleCtx *ctx, const JSONPathNode_t *jpn) {
             break;
         case E_NOKEY:
             err = sdscatprintf(err, "ERR key does not exist at level %d in path '%*.s'",
-                               jpn->errlevel, (int)jpn->spathlen, jpn->spath);
-            break;
-        case E_INFINDEX:
-            err = sdscatprintf(err, "ERR illegal infinite index at level %d in path '%*.s'",
                                jpn->errlevel, (int)jpn->spathlen, jpn->spath);
             break;
         default:
@@ -521,22 +518,6 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
                 if (OBJ_OK != Node_DictSet(jpn.p, jpn.sp.nodes[jpn.sp.len - 1].value.key, jo)) {
                     RM_LOG_WARNING(ctx, "%s", REJSON_ERROR_DICT_SET);
                     RedisModule_ReplyWithError(ctx, REJSON_ERROR_DICT_SET);
-                    goto error;
-                }
-                break;
-            case E_INFINDEX:
-                // only allow inserting at terminal
-                if (jpn.errlevel != jpn.sp.len - 1) {
-                    RedisModule_ReplyWithError(ctx, REJSON_ERROR_INSERT_NONTERMINAL);
-                    goto error;
-                }
-                if (OBJ_OK != (jpn.sp.nodes[jpn.sp.len - 1].value.positive
-                                   ? Node_ArrayAppend(jpn.p, jo)
-                                   : Node_ArrayPrepend(jpn.p, jo))) {
-                    RM_LOG_WARNING(ctx, "%s", REJSON_ERROR_ARRAY_SET);
-                    RedisModule_ReplyWithError(ctx, jpn.sp.nodes[jpn.sp.len - 1].value.positive
-                                                        ? REJSON_ERROR_ARRAY_APPEND
-                                                        : REJSON_ERROR_ARRAY_PREPEND);
                     goto error;
                 }
                 break;
@@ -943,16 +924,15 @@ error:
     return REDISMODULE_ERR;
 }
 
-/* JSON.ARRINSERT <key> <path> <json> [<json> ...]
- * Inserts the `json` value(s) to the array at `path` before the `index` (shifts to the right)
- * Inserting at index 0, -inf or any -N where N is larger then the array's size is the equivalent of
- * prepending to it (i.e. LPUSH). Similarly, appending is done with +inf or any positive index geq
- * to the length.
+/* JSON.ARRINSERT <key> <path> <index> <json> [<json> ...]
+ * Inserts the `json` value(s) into the array at `path` before the `index` (shifts to the right)
+ * Inserting at index 0 is the equivalent of prepending to it (i.e. LPUSH). The index must exist in
+ * the target array and negative values are interpreted as expected.
  * Reply: Integer, specifically the array's new size
 */
 int JSONArrInsert_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     // check args
-    if (argc < 4) return RedisModule_WrongArity(ctx);
+    if (argc < 5) return RedisModule_WrongArity(ctx);
     RedisModule_AutoMemory(ctx);
 
     // key can't be empty and must be a JSON type
@@ -975,55 +955,41 @@ int JSONArrInsert_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, in
         return REDISMODULE_ERR;
     }
 
-    // extract the index and deal with path errors
-    int index;
-    switch (jpn.err) {
-        case E_OK:
-            // the target must be an array
-            if (N_ARRAY != jpn.p->type) {
-                RedisModule_ReplyWithError(ctx, REJSON_ERROR_TYPE_NOT_ARRAY);
-                goto error;
-            }
-            // retrieve the index and translate negative values
-            index = jpn.sp.nodes[jpn.sp.len - 1].value.index;
-            if (index < 0) {
-                index = jpn.p->value.arrval.len + index;
-            }
-            break;
-        case E_NOINDEX:
-            // only allow inserting at terminal path tokens
-            if (jpn.errlevel != jpn.sp.len - 1) {
-                RedisModule_ReplyWithError(ctx, REJSON_ERROR_INSERT_NONTERMINAL);
-                goto error;
-            }
-            // get index, translate negative values and treat out of bounds as array ends
-            index = jpn.sp.nodes[jpn.errlevel].value.index;
-            if (index < 0) {
-                index = MIN(jpn.p->value.arrval.len + index, 0);
-                if (index < 0) index = 0;
-            } else if (index >= jpn.p->value.arrval.len) {
-                index = jpn.p->value.arrval.len;
-            }
-            break;
-        case E_INFINDEX:
-            // only allow inserting at terminal path tokens
-            if (jpn.errlevel != jpn.sp.len - 1) {
-                RedisModule_ReplyWithError(ctx, REJSON_ERROR_INSERT_NONTERMINAL);
-                goto error;
-            }
-            // get index
-            index = jpn.sp.nodes[jpn.errlevel].value.positive ? jpn.p->value.arrval.len : 0;
-            break;
-        case E_BADTYPE:
-        case E_NOKEY:
-        default:
-            ReplyWithPathError(ctx, &jpn);
-            goto error;
-    }  // switch (jpn.err)
+    // deal with path errors
+    if (E_OK != jpn.err) {
+        ReplyWithPathError(ctx, &jpn);
+        goto error;
+    }
+
+    // the target must be an array
+    if (N_ARRAY != NODETYPE(jpn.n)) {
+        sds err = sdsempty();
+        err = sdscatfmt(err, "ERR wrong type of value - expected %s but found %s",
+                        NodeTypeStr(N_ARRAY), NodeTypeStr(NODETYPE(jpn.n)));
+        RedisModule_ReplyWithError(ctx, err);
+        sdsfree(err);
+        goto error;
+    }
+
+    // get the index
+    long long index;
+    if (REDISMODULE_OK != RedisModule_StringToLongLong(argv[3], &index)) {
+        RedisModule_ReplyWithError(ctx, REJSON_ERROR_INDEX_INVALID);
+        goto error;
+    }
+
+    // convert negative values
+    if (index < 0) index = Node_Length(jpn.n) + index;
+
+    // check for out of range
+    if (index < 0 || index > Node_Length(jpn.n)) {
+        RedisModule_ReplyWithError(ctx, REJSON_ERROR_INDEX_OUTOFRANGE);
+        goto error;
+    }
 
     // make an array from the JSON values
-    Node *sub = NewArrayNode(argc - 3);
-    for (int i = 3; i < argc; i++) {
+    Node *sub = NewArrayNode(argc - 4);
+    for (int i = 4; i < argc; i++) {
         // JSON must be valid
         size_t jsonlen;
         const char *json = RedisModule_StringPtrLen(argv[i], &jsonlen);
@@ -1058,15 +1024,15 @@ int JSONArrInsert_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, in
         }
     }
 
-    // insert it
-    if (OBJ_OK != Node_ArrayInsert(jpn.p, index, sub)) {
+    // insert the sub array to the target array
+    if (OBJ_OK != Node_ArrayInsert(jpn.n, index, sub)) {
         Node_Free(sub);
         RM_LOG_WARNING(ctx, "%s", REJSON_ERROR_INSERT);
         RedisModule_ReplyWithError(ctx, REJSON_ERROR_INSERT);
         goto error;
     }
 
-    RedisModule_ReplyWithLongLong(ctx, jpn.p->value.arrval.len);
+    RedisModule_ReplyWithLongLong(ctx, Node_Length(jpn.n));
 
     JSONPathNode_Free(&jpn);
     return REDISMODULE_OK;
@@ -1077,8 +1043,11 @@ error:
 }
 
 /* JSON.ARRINDEX <key> <path> <scalar> [start] [stop]
- * Returns the lowest index of value in the array, optionally between start (default 0) and stop
- * (default -1)
+ * Returns the lowest index of a scalar value in the array.
+ * The optional inclusive start (default 0) and exclusive stop (default 0, meaning the last element
+ * is included) specify a slice of the array.
+ * Note: out of range errors are treated by rounding the index to the arrays start/end. An inverse
+ * index range will return unfound.
  * Reply: Integer, specifically the position of the scalar or -1 if unfound
 */
 int JSONArrIndex_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
@@ -1090,7 +1059,7 @@ int JSONArrIndex_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int
     RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ);
     int type = RedisModule_KeyType(key);
     if (REDISMODULE_KEYTYPE_EMPTY == type) {
-        // an empty key has no paths so break early
+        // an empty key has no arrays
         RedisModule_ReplyWithError(ctx, REJSON_ERROR_TYPE_NOT_ARRAY);
         return REDISMODULE_ERR;
     } else if (RedisModule_ModuleTypeGetType(key) != JSONType) {
@@ -1113,12 +1082,12 @@ int JSONArrIndex_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int
     }
 
     // verify that the target's type is an array
-    if (N_ARRAY != jpn.n->type) {
+    if (N_ARRAY != NODETYPE(jpn.n)) {
         RedisModule_ReplyWithError(ctx, REJSON_ERROR_TYPE_NOT_ARRAY);
         goto error;
     }
 
-    // JSON must be valid
+    // the JSON value to search for must be valid
     size_t jsonlen;
     const char *json = RedisModule_StringPtrLen(argv[3], &jsonlen);
     if (!jsonlen) {
@@ -1126,7 +1095,7 @@ int JSONArrIndex_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int
         goto error;
     }
 
-    // create object from json
+    // create an object from json
     Object *jo = NULL;
     char *jerr = NULL;
     if (JSONOBJECT_OK != CreateNodeFromJSON(json, jsonlen, &jo, &jerr)) {
@@ -1140,8 +1109,8 @@ int JSONArrIndex_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int
         goto error;
     }
 
-    // get start & stop, translate negatives
-    long long start = 0, stop = -1;
+    // get start (inclusive) & stop (exlusive) indices
+    long long start = 0, stop = 0;
     if (argc > 4) {
         if (REDISMODULE_OK != RedisModule_StringToLongLong(argv[4], &start)) {
             RedisModule_ReplyWithError(ctx, REJSON_ERROR_INDEX_INVALID);
@@ -1166,10 +1135,10 @@ error:
 }
 
 /* JSON.ARRTRIM <key> <path> <start> <stop>
-* Trim an existing array so that it will contain only the specified range of elements specified.
-* Out of range indexes will not produce an error: if start is larger than the array, or start > end,
-* the result will be an empty array. If end is larger than the end of the array, it will be treated
-* like the last element of the list.
+* Trim an existing array so that it will contain only the specified inclusive range of elements.
+* Out of range indexes will not produce an error: if start is larger than the array or start > stop,
+* the result will be an empty array. If start is < 0 then it will be treated as 0. If end is larger
+* than the end of the array, it will be treated like the last element in it.
 * Reply: Integer, specifically the array's new size
 */
 int JSONArrTrim_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
@@ -1204,14 +1173,14 @@ int JSONArrTrim_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
     }
 
     // verify that the target's type is an array
-    if (N_ARRAY != jpn.n->type) {
+    if (N_ARRAY != NODETYPE(jpn.n)) {
         RedisModule_ReplyWithError(ctx, REJSON_ERROR_TYPE_NOT_ARRAY);
         goto error;
     }
 
     // get start & stop
     long long start, stop, left, right;
-    long long len = (long long)jpn.n->value.arrval.len;
+    long long len = (long long) Node_Length(jpn.n);
     if (REDISMODULE_OK != RedisModule_StringToLongLong(argv[3], &start)) {
         RedisModule_ReplyWithError(ctx, REJSON_ERROR_INDEX_INVALID);
         goto error;
@@ -1222,14 +1191,14 @@ int JSONArrTrim_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
     }
 
     // convert negative indexes
-    if (start < 0) start = MAX(len + start, 0);
+    if (start < 0) start = len + start;
     if (stop < 0) stop = len + stop;
 
-    if (start > stop || start >= len) {
-        // empty the array
+    if (start < 0) start = 0;               // start at the beginning
+    if (start > stop || start >= len) {     // empty the array
         left = len;
         right = 0;
-    } else {
+    } else {                                // set the boundries
         left = start;
         if (stop >= len) stop = len - 1;
         right = len - stop - 1;

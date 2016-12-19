@@ -37,13 +37,13 @@ MU_TEST(testNodeArray) {
     mu_check(OBJ_OK == Node_ArrayAppend(arr, NewStringNode("bar", 3)));
     mu_check(OBJ_OK == Node_ArrayAppend(arr, NewStringNode("baz", 3)));
     mu_assert_int_eq(Node_Length(arr), 3);
-
     mu_check(OBJ_OK == Node_ArrayItem(arr, 0, &n));
     mu_check(NULL != n);
     mu_check(N_STRING == n->type);
+    // arr = ["foo", "bar", "baz"]
 
-    // Test inserting to the list
-    Node *sub = NewArrayNode(2);
+    // Test inserting to the array
+    Node *sub = NewArrayNode(2);    // <- [false, null]
     mu_check(NULL != sub);
     mu_check(OBJ_OK == Node_ArrayAppend(sub, NewBoolNode(0)));
     mu_check(OBJ_OK == Node_ArrayAppend(sub, NULL));
@@ -54,8 +54,9 @@ MU_TEST(testNodeArray) {
     mu_check(N_BOOLEAN == n->type);
     mu_check(OBJ_OK == Node_ArrayItem(arr, 1, &n));
     mu_check(NULL == n);
+    // arr = [false, null, "foo", "bar", "baz"]
 
-    sub = NewArrayNode(1);
+    sub = NewArrayNode(1);          // <- ["qux"]
     mu_check(NULL != sub);
     mu_check(OBJ_OK == Node_ArrayAppend(sub, NewCStringNode("qux")));
     mu_check(OBJ_OK == Node_ArrayInsert(arr, 5, sub));
@@ -63,9 +64,10 @@ MU_TEST(testNodeArray) {
     mu_check(OBJ_OK == Node_ArrayItem(arr, 5, &n));
     mu_check(NULL != n);
     mu_check(N_STRING == n->type);
+    // arr = [false, null, "foo", "bar", "qux", baz"]
 
     sub = NewArrayNode(2);
-    mu_check(NULL != sub);
+    mu_check(NULL != sub);          // <- [2, 2.719]
     mu_check(OBJ_OK == Node_ArrayAppend(sub, NewIntNode(2)));
     mu_check(OBJ_OK == Node_ArrayAppend(sub, NewDoubleNode(2.719)));
     mu_check(OBJ_OK == Node_ArrayInsert(arr, -1, sub));
@@ -79,32 +81,37 @@ MU_TEST(testNodeArray) {
     mu_check(OBJ_OK == Node_ArrayItem(arr, 7, &n));
     mu_check(NULL != n);
     mu_check(N_STRING == n->type);
+    // arr = [false, null, "foo", "bar", "qux", 2, 2.719, "baz"]
 
     // Find some values
     n = NewIntNode(2);
-    mu_assert_int_eq(Node_ArrayIndex(arr, n, 0, -1), 5);
-    mu_assert_int_eq(Node_ArrayIndex(arr, n, -1, 0), 5);
-    mu_assert_int_eq(Node_ArrayIndex(arr, n, 999, -999), 5);
-    mu_assert_int_eq(Node_ArrayIndex(arr, n, 1, 3), -1);
+    mu_assert_int_eq(5, Node_ArrayIndex(arr, n, 0, 0));
+    mu_assert_int_eq(5, Node_ArrayIndex(arr, n, 0, -1));
+    mu_assert_int_eq(5, Node_ArrayIndex(arr, n, -7, -2));
+    mu_assert_int_eq(5, Node_ArrayIndex(arr, n, -10, 0));
+    mu_assert_int_eq(-1, Node_ArrayIndex(arr, n, 0, 5));
+    mu_assert_int_eq(-1, Node_ArrayIndex(arr, n, 0, -3));
+    mu_assert_int_eq(-1, Node_ArrayIndex(arr, n, 0, 1));
+    mu_assert_int_eq(-1, Node_ArrayIndex(arr, n, -10, -9));    
     Node_Free(n);
 
     n = NewDoubleNode(2.719);
-    mu_assert_int_eq(Node_ArrayIndex(arr, n, 0, -1), 6);
+    mu_assert_int_eq(Node_ArrayIndex(arr, n, 0, 0), 6);
     Node_Free(n);
 
     n = NewBoolNode(0);
-    mu_assert_int_eq(Node_ArrayIndex(arr, n, 0, -1), 0);
+    mu_assert_int_eq(Node_ArrayIndex(arr, n, 0, 0), 0);
     Node_Free(n);
 
     n = NewStringNode("qux", 3);
-    mu_assert_int_eq(Node_ArrayIndex(arr, n, 0, -1), 7);
+    mu_assert_int_eq(Node_ArrayIndex(arr, n, 0, 0), 7);
     Node_Free(n);
 
     n = NewStringNode("QUX", 3);
-    mu_assert_int_eq(Node_ArrayIndex(arr, n, 0, -1), -1);
+    mu_assert_int_eq(Node_ArrayIndex(arr, n, 0, 0), -1);
     Node_Free(n);
 
-    mu_assert_int_eq(Node_ArrayIndex(arr, NULL, 0, -1), 1);
+    mu_assert_int_eq(Node_ArrayIndex(arr, NULL, 0, 0), 1);
 
     // Delete some more elements
     mu_check(OBJ_OK == Node_ArrayDelRange(arr, 0, 1));
@@ -113,8 +120,8 @@ MU_TEST(testNodeArray) {
     mu_check(OBJ_OK == Node_ArrayDelRange(arr, 4, 1));
     mu_check(OBJ_OK == Node_ArrayDelRange(arr, 2, 1));
     mu_assert_int_eq(Node_Length(arr), 3);
-    mu_check(OBJ_OK == Node_ArrayDelRange(arr, 0, 2));
-    mu_assert_int_eq(Node_Length(arr), 1);
+    mu_check(OBJ_OK == Node_ArrayDelRange(arr, 0, 1));
+    mu_assert_int_eq(Node_Length(arr), 2);
 
     Node_Free(arr);
 }
@@ -308,30 +315,17 @@ MU_TEST(testPathArray) {
     mu_check(E_NOINDEX == pe);
     SearchPath_Free(&sp);
 
-    // test the infinity
-    sp = NewSearchPath(1);
-    SearchPath_AppendInfiniteIndex(&sp, 1);
-    pe = SearchPath_Find(&sp, arr, &n);
-    mu_check(pe == E_INFINDEX);
-    SearchPath_Free(&sp);    
-
-    sp = NewSearchPath(1);
-    SearchPath_AppendInfiniteIndex(&sp, 0);
-    pe = SearchPath_Find(&sp, arr, &n);
-    mu_check(pe == E_INFINDEX);
-    SearchPath_Free(&sp);    
-
     Node_Free(arr);
 }
 
 MU_TEST(testPathParse) {
-    const char *path = "foo.bar[3][\"baz\"].bar[\"boo\"][\"\"][6379][-17][+18][+inf][-inf]";
+    const char *path = "foo.bar[3][\"baz\"].bar[\"boo\"][\"\"][6379][-17]";
 
     SearchPath sp = NewSearchPath(0);
     int rc = ParseJSONPath(path, strlen(path), &sp);
     mu_assert_int_eq(rc, PARSE_OK);
 
-    mu_assert_int_eq(sp.len, 12);
+    mu_assert_int_eq(sp.len, 9);
 
     mu_check(sp.nodes[0].type == NT_KEY && !strcmp(sp.nodes[0].value.key, "foo"));
     mu_check(sp.nodes[1].type == NT_KEY && !strcmp(sp.nodes[1].value.key, "bar"));
@@ -342,13 +336,10 @@ MU_TEST(testPathParse) {
     mu_check(sp.nodes[6].type == NT_KEY && !strcmp(sp.nodes[6].value.key, ""));
     mu_check(sp.nodes[7].type == NT_INDEX && sp.nodes[7].value.index == 6379);
     mu_check(sp.nodes[8].type == NT_INDEX && sp.nodes[8].value.index == -17);
-    mu_check(sp.nodes[9].type == NT_INDEX && sp.nodes[9].value.index == 18);
-    mu_check(sp.nodes[10].type == NT_INFINITE && sp.nodes[10].value.positive);
-    mu_check(sp.nodes[11].type == NT_INFINITE && !sp.nodes[11].value.positive);
 
     const char *badpaths[] = {
         "3",          "6379",       "foo[bar]", "foo[]",         "foo[3",        "bar[\"]",
-        "foo..bar",   "foo['bar']", "foo/bar",  "foo.bar[-1.2]", "foo.bar[1.1]", "foo.bar[+in",
+        "foo..bar",   "foo['bar']", "foo/bar",  "foo.bar[-1.2]", "foo.bar[1.1]", "foo.bar[+3]",
         "foobar[-i]", NULL};
 
     for (int idx = 0; badpaths[idx] != NULL; idx++) {

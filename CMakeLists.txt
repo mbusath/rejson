@@ -32,6 +32,9 @@ set (RMUTIL_DIR "${PROJECT_SOURCE_DIR}/deps/rmutil")
 include(CTest)
 enable_testing()
 
+# This helps https://github.com/vector-of-bool/vscode-cmake-tools
+include(CMakeToolsHelpers OPTIONAL)
+
 include_directories("${PROJECT_SOURCE_DIR}/src" $RMUTIL_DIR)
 add_subdirectory(src)
 add_subdirectory(test)

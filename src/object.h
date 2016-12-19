@@ -168,9 +168,10 @@ int Node_ArraySet(Node *arr, int index, Node *n);
 */
 int Node_ArrayItem(Node *arr, int index, Node **n);
 
-/** Returns the index of the scalar n in arr between indices start and stop. Index values can be
-* negative.
-* Returns the index of of the value if found, -1 if n is not a scalar or not found
+/** Searches for the scalar n in arr between indices the inclusive start index and the exclusive
+* stop index. Index values can be negative. Out of range errors are treated by rounding the index to
+* the arrays start/end. An inverse index range will return unfound.
+* Returns the index of of the value if found, -1 if n is not a scalar or unfound
 */
 int Node_ArrayIndex(Node *arr, Node *n, int start, int stop);
 

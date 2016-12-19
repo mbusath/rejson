@@ -188,7 +188,7 @@ int Node_ArrayInsert(Node *arr, int index, Node *sub) {
     }
 
     __node_ArrayMakeRoomFor(arr, s->len);
-    if (index < a->len) {  //  shift contents to the right
+    if (index < (int) a->len) {  //  shift contents to the right
         memmove(&a->entries[index + s->len], &a->entries[index], (a->len - index) * sizeof(Node *));
     }
 
@@ -249,35 +249,22 @@ int Node_ArrayIndex(Node *arr, Node *n, int start, int stop) {
         return -1;
     }
 
-    // Translate negative index values
-    if (start < 0) {
-        start = MAX(0, (int)a->len + start);
-    }
-    if (stop < 0) {
-        stop = MAX(0, (int)a->len + stop);
-    }
+    // convert negative indices
+    if (start < 0) start = a->len + start;
+    if (stop < 0) stop = a->len + stop;
 
-    // Swap start and stop if OOO
-    if (start > stop) {
-        int t = start;
-        start = stop;
-        stop = t;
-    }
+    // check and adjust for out of range indices
+    if (start < 0) start = 0;                               // start at the beginning
+    if (start >= (int) a->len) start = MAX(0, a->len - 1);  // but don't overdo it
+    if (stop >= (int) a->len) stop = 0;                     // get including the end
+    if (stop == 0) stop = a->len;                           // stop after the end
+    if (stop < start) stop = start;                         // don't search at all
 
-    // Break early if search begins outside the array
-    if (start >= a->len) return -1;
-
-    // Stop searching at stop or at the end of the array
-    stop = MIN(stop + 1, (int)a->len);
-
-    // Search within range
+    // search for the value
     for (int i = start; i < stop; i++) {
-        // NULL treatment
-        if (!n && !a->entries[i]) return i;
-        if (!n || !a->entries[i]) continue;
-
-        // No need to compare values if types aren't the same
-        if (a->entries[i]->type != n->type) continue;
+        if (!n && !a->entries[i]) return i;             // both are nulls
+        if (!n || !a->entries[i]) continue;             // just one null
+        if (a->entries[i]->type != n->type) continue;   // types not the same
 
         // Check equality per scalar type
         switch (n->type) {
@@ -301,7 +288,8 @@ int Node_ArrayIndex(Node *arr, Node *n, int start, int stop) {
                 break;
         }  // switch (n->type)
     }      // for
-    return -1;
+    
+    return -1;  // unfound
 }
 
 Node *__obj_find(t_dict *o, const char *key, int *idx) {
