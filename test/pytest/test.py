@@ -163,16 +163,17 @@ class JSONTestCase(ModuleTestCase(module_path='../../lib/rejson.so', redis_path=
             r.delete('test')
             self.assertOk(r.execute_command('JSON.SET', 'test', '.', '{}'))
             self.assertEqual(r.execute_command('JSON.DEL', 'test', '.'), 1)
-            self.assertExists(r, 'test')
+            self.assertNotExists(r, 'test')
 
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.', '{}'))
             self.assertOk(r.execute_command('JSON.SET', 'test', '.foo', '"bar"'))
             self.assertOk(r.execute_command('JSON.SET', 'test', '.baz', '"qux"'))
             self.assertEqual(r.execute_command('JSON.DEL', 'test', '.baz'), 1)
-            self.assertEqual(r.execute_command('JSON.LEN', 'test', '.'), 1)
-            self.assertEqual(r.execute_command('JSON.TYPE', 'test', '.baz'), 'none')
+            self.assertEqual(r.execute_command('JSON.OBJLEN', 'test', '.'), 1)
+            self.assertIsNone(r.execute_command('JSON.TYPE', 'test', '.baz'))
             self.assertEqual(r.execute_command('JSON.DEL', 'test', '.foo'), 1)
-            self.assertEqual(r.execute_command('JSON.LEN', 'test', '.'), 0)
-            self.assertEqual(r.execute_command('JSON.TYPE', 'test', '.foo'), 'none')
+            self.assertEqual(r.execute_command('JSON.OBJLEN', 'test', '.'), 0)
+            self.assertIsNone(r.execute_command('JSON.TYPE', 'test', '.foo'))
             self.assertEqual(r.execute_command('JSON.TYPE', 'test', '.'), 'object')
 
             self.assertOk(r.execute_command('JSON.SET', 'test', '.foo', '"bar"'))
@@ -180,12 +181,13 @@ class JSONTestCase(ModuleTestCase(module_path='../../lib/rejson.so', redis_path=
             self.assertOk(r.execute_command('JSON.SET', 'test', '.arr', '[1.2,1,2]'))
 
             self.assertEqual(r.execute_command('JSON.DEL', 'test', '.arr[1]'), 1)
-            self.assertEqual(r.execute_command('JSON.LEN', 'test', '.'), 3)
+            self.assertEqual(r.execute_command('JSON.OBJLEN', 'test', '.'), 3)
+            self.assertEqual(r.execute_command('JSON.ARRLEN', 'test', '.arr'), 2)
             self.assertEqual(r.execute_command('JSON.TYPE', 'test', '.arr'), 'array')
             self.assertEqual(r.execute_command('JSON.DEL', 'test', '.arr'), 1)
-            self.assertEqual(r.execute_command('JSON.LEN', 'test', '.'), 2)
+            self.assertEqual(r.execute_command('JSON.OBJLEN', 'test', '.'), 2)
             self.assertEqual(r.execute_command('JSON.DEL', 'test', '.'), 1)
-            self.assertEqual(r.execute_command('JSON.GET', 'test'), '{}')
+            self.assertIsNone(r.execute_command('JSON.GET', 'test'))
 
     def testDictionaryCRUD(self):
         with self.redis() as r:
@@ -229,66 +231,66 @@ class JSONTestCase(ModuleTestCase(module_path='../../lib/rejson.so', redis_path=
 
             r.delete('test')
             self.assertOk(r.execute_command('JSON.SET', 'test', '.', '{ "arr": [1] }'))
-            self.assertEqual(r.execute_command('JSON.INSERT', 'test', '.arr[0]', 0), 2)
-            self.assertEqual(r.execute_command('JSON.INSERT', 'test', '.arr[-inf]', -1), 3)
-            self.assertEqual(r.execute_command('JSON.INSERT', 'test', '.arr[+inf]', 2), 4)
-            self.assertEqual(r.execute_command('JSON.INSERT', 'test', '.arr[-4]', -2), 5)
-            self.assertEqual(r.execute_command('JSON.INSERT', 'test', '.arr[6]', 4), 6)
-            self.assertEqual(r.execute_command('JSON.INSERT', 'test', '.arr[-1]', 3), 7)
+            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr[0]', 0), 2)
+            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr[-inf]', -1), 3)
+            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr[+inf]', 2), 4)
+            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr[-4]', -2), 5)
+            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr[6]', 4), 6)
+            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr[-1]', 3), 7)
             data = json.loads(r.execute_command('JSON.GET', 'test', '.arr'))
             self.assertListEqual(data, [-2, -1, 0, 1, 2, 3, 4])
 
             r.delete('test')
             self.assertOk(r.execute_command('JSON.SET', 'test', '.', '{ "arr": [] }'))
-            self.assertEqual(r.execute_command('JSON.INSERT', 'test', '.arr[0]', 2), 1)
-            self.assertEqual(r.execute_command('JSON.INSERT', 'test', '.arr[-1]', 0, 1), 3)
-            self.assertEqual(r.execute_command('JSON.INSERT', 'test', '.arr[-inf]', -2, -1), 5)
-            self.assertEqual(r.execute_command('JSON.INSERT', 'test', '.arr[+inf]', 3, 6), 7)
-            self.assertEqual(r.execute_command('JSON.INSERT', 'test', '.arr[6]', 4, 5), 9)
+            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr[0]', 2), 1)
+            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr[-1]', 0, 1), 3)
+            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr[-inf]', -2, -1), 5)
+            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr[+inf]', 3, 6), 7)
+            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr[6]', 4, 5), 9)
             data = json.loads(r.execute_command('JSON.GET', 'test', '.arr'))
             self.assertListEqual(data, [-2, -1, 0, 1, 2, 3, 4, 5, 6])
 
             with self.assertRaises(redis.exceptions.ResponseError) as cm:
-                r.execute_command('JSON.INSERT', 'test', '.arr', 0)
+                r.execute_command('JSON.ARRINSERT', 'test', '.arr', 0)
 
             # TODO: continue testing
 
-    def testIndexCommand(self):
+    def testArrIndexCommand(self):
         with self.redis() as r:
             r.delete('test')
             self.assertOk(r.execute_command('JSON.SET', 'test',
                                             '.', '{ "arr": [0, 1, 2, 3, 2, 1, 0] }'))
-            self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', 0), 0)
-            self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', 3), 3)
-            self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', 4), -1)
-            self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', 0, 1), 6)
-            self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', 0, -1), 6)
-            self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', 0, 6), 6)
-            self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', 0, 4, -1), 6)
-            self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', 0, 5, -2), -1)
-            self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', 2, -2, 6), -1)
-            self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', '"foo"'), -1)
+            self.assertEqual(r.execute_command('JSON.ARRINDEX', 'test', '.arr', 0), 0)
+            self.assertEqual(r.execute_command('JSON.ARRINDEX', 'test', '.arr', 3), 3)
+            self.assertEqual(r.execute_command('JSON.ARRINDEX', 'test', '.arr', 4), -1)
+            self.assertEqual(r.execute_command('JSON.ARRINDEX', 'test', '.arr', 0, 1), 6)
+            self.assertEqual(r.execute_command('JSON.ARRINDEX', 'test', '.arr', 0, -1), 6)
+            self.assertEqual(r.execute_command('JSON.ARRINDEX', 'test', '.arr', 0, 6), 6)
+            self.assertEqual(r.execute_command('JSON.ARRINDEX', 'test', '.arr', 0, 4, -1), 6)
+            self.assertEqual(r.execute_command('JSON.ARRINDEX', 'test', '.arr', 0, 5, -2), -1)
+            self.assertEqual(r.execute_command('JSON.ARRINDEX', 'test', '.arr', 2, -2, 6), -1)
+            self.assertEqual(r.execute_command('JSON.ARRINDEX', 'test', '.arr', '"foo"'), -1)
 
-            self.assertEqual(r.execute_command('JSON.INSERT', 'test', '.arr[4]', '[4]'), 8)
-            self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', 3), 3)
-            self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', 2, 3), 5)
-            self.assertEqual(r.execute_command('JSON.INDEX', 'test', '.arr', '[4]'), -1)
+            self.assertEqual(r.execute_command('JSON.ARRINSERT', 'test', '.arr[4]', '[4]'), 8)
+            self.assertEqual(r.execute_command('JSON.ARRINDEX', 'test', '.arr', 3), 3)
+            self.assertEqual(r.execute_command('JSON.ARRINDEX', 'test', '.arr', 2, 3), 5)
+            self.assertEqual(r.execute_command('JSON.ARRINDEX', 'test', '.arr', '[4]'), -1)
 
-    def testTrimCommand(self):
+    def testArrTrimCommand(self):
         with self.redis() as r:
             r.delete('test')
             self.assertOk(r.execute_command('JSON.SET', 'test',
                                             '.', '{ "arr": [0, 1, 2, 3, 2, 1, 0] }'))
-            self.assertEqual(r.execute_command('JSON.TRIM', 'test', '.arr', 1, -2), 5)
+            self.assertEqual(r.execute_command('JSON.ARRTRIM', 'test', '.arr', 1, -2), 5)
             self.assertListEqual(json.loads(r.execute_command(
                 'JSON.GET', 'test', '.arr')), [1, 2, 3, 2, 1])
-            self.assertEqual(r.execute_command('JSON.TRIM', 'test', '.arr', 0, 99), 5)
+            self.assertEqual(r.execute_command('JSON.ARRTRIM', 'test', '.arr', 0, 99), 5)
             self.assertListEqual(json.loads(r.execute_command(
                 'JSON.GET', 'test', '.arr')), [1, 2, 3, 2, 1])
-            self.assertEqual(r.execute_command('JSON.TRIM', 'test', '.arr', 0, 2), 3)
+            self.assertEqual(r.execute_command('JSON.ARRTRIM', 'test', '.arr', 0, 2), 3)
             self.assertListEqual(json.loads(r.execute_command(
                 'JSON.GET', 'test', '.arr')), [1, 2, 3])
-            self.assertEqual(r.execute_command('JSON.TRIM', 'test', '.arr', 99, 2), 0)
+            self.assertEqual(r.execute_command('JSON.ARRTRIM', 'test', '.arr', 99, 2), 0)
             self.assertListEqual(json.loads(r.execute_command('JSON.GET', 'test', '.arr')), [])
 
     def testTypeCommand(self):
@@ -299,24 +301,28 @@ class JSONTestCase(ModuleTestCase(module_path='../../lib/rejson.so', redis_path=
                 reply = r.execute_command('JSON.TYPE', 'test', '.')
                 self.assertEqual(reply, k)
 
-    def testLenCommand(self):
+    def testLenCommands(self):
         with self.redis() as r:
             r.delete('test')
 
             # test that nothing is returned for empty keys
-            self.assertEqual(r.execute_command('JSON.LEN', 'foo', '.bar'), None)
+            self.assertEqual(r.execute_command('JSON.ARRLEN', 'foo', '.bar'), None)
 
             # test elements with valid lengths
             self.assertOk(r.execute_command('JSON.SET', 'test', '.', json.dumps(docs['basic'])))
-            self.assertEqual(r.execute_command('JSON.LEN', 'test', '.string'), 12)
-            self.assertEqual(r.execute_command('JSON.LEN', 'test', '.dict'), 3)
-            self.assertEqual(r.execute_command('JSON.LEN', 'test', '.arr'), 6)
+            self.assertEqual(r.execute_command('JSON.STRLEN', 'test', '.string'), 12)
+            self.assertEqual(r.execute_command('JSON.OBJLEN', 'test', '.dict'), 3)
+            self.assertEqual(r.execute_command('JSON.ARRLEN', 'test', '.arr'), 6)
 
             # test elements with undefined lengths
-            self.assertEqual(r.execute_command('JSON.LEN', 'test', '.bool'), -1)
-            self.assertEqual(r.execute_command('JSON.LEN', 'test', '.none'), -1)
-            self.assertEqual(r.execute_command('JSON.LEN', 'test', '.int'), -1)
-            self.assertEqual(r.execute_command('JSON.LEN', 'test', '.num'), -1)
+            with self.assertRaises(redis.exceptions.ResponseError) as cm:
+                r.execute_command('JSON.ARRLEN', 'test', '.bool')
+            with self.assertRaises(redis.exceptions.ResponseError) as cm:
+                r.execute_command('JSON.STRLEN', 'test', '.none')
+            with self.assertRaises(redis.exceptions.ResponseError) as cm:
+                r.execute_command('JSON.OBJLEN', 'test', '.int')
+            with self.assertRaises(redis.exceptions.ResponseError) as cm:
+                r.execute_command('JSON.STRLEN', 'test', '.num')
 
             # test a non existing key
             with self.assertRaises(redis.exceptions.ResponseError) as cm:
@@ -330,30 +336,34 @@ class JSONTestCase(ModuleTestCase(module_path='../../lib/rejson.so', redis_path=
             with self.assertRaises(redis.exceptions.ResponseError) as cm:
                 r.execute_command('JSON.LEN', 'test', '.arr[-inf]')
 
-    def testKeysCommand(self):
+    def testObjKeysCommand(self):
         with self.redis() as r:
             r.delete('test')
             self.assertOk(r.execute_command('JSON.SET', 'test', '.', json.dumps(docs['types'])))
-            data = r.execute_command('JSON.KEYS', 'test', '.')
+            data = r.execute_command('JSON.OBJKEYS', 'test', '.')
             self.assertEqual(len(data), len(docs['types']))
             for k in data:
                 self.assertTrue(k in docs['types'])
 
-    def testIncrCommand(self):
+            # test a wrong type
+            with self.assertRaises(redis.exceptions.ResponseError) as cm:
+                r.execute_command('JSON.OBJKEYS', 'test', '.null')
+
+    def testNumIncrCommand(self):
         with self.redis() as r:
             r.delete('test')
             self.assertOk(r.execute_command('JSON.SET', 'test', '.', '{ "foo": 0, "bar": "baz" }'))
-            self.assertEqual(r.execute_command('JSON.INCRBY', 'test', '.foo', 1), 1)
-            self.assertEqual(r.execute_command('JSON.INCRBY', 'test', '.foo', 2), 3)
-            self.assertEqual(r.execute_command('JSON.INCRBY', 'test', '.foo', .5), '3.5')
+            self.assertEqual(r.execute_command('JSON.NUMINCRBY', 'test', '.foo', 1), 1)
+            self.assertEqual(r.execute_command('JSON.NUMINCRBY', 'test', '.foo', 2), 3)
+            self.assertEqual(r.execute_command('JSON.NUMINCRBY', 'test', '.foo', .5), '3.5')
 
             # test a wrong type
             with self.assertRaises(redis.exceptions.ResponseError) as cm:
-                r.execute_command('JSON.INCRBY', 'test', '.bar', 1)
+                r.execute_command('JSON.NUMINCRBY', 'test', '.bar', 1)
 
             # test a missing path
             with self.assertRaises(redis.exceptions.ResponseError) as cm:
-                r.execute_command('JSON.INCRBY', 'test', '.fuzz', 1)
+                r.execute_command('JSON.NUMINCRBY', 'test', '.fuzz', 1)
 
 
 if __name__ == '__main__':
