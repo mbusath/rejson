@@ -337,9 +337,9 @@ class JSONTestCase(ModuleTestCase(module_path='../../lib/rejson.so', redis_path=
         with self.redis() as r:
             r.delete('test')
             self.assertOk(r.execute_command('JSON.SET', 'test', '.', '{ "foo": 0, "bar": "baz" }'))
-            self.assertEqual(r.execute_command('JSON.NUMINCRBY', 'test', '.foo', 1), 1)
-            self.assertEqual(r.execute_command('JSON.NUMINCRBY', 'test', '.foo', 2), 3)
-            self.assertEqual(r.execute_command('JSON.NUMINCRBY', 'test', '.foo', .5), '3.5')
+            self.assertEqual('1', r.execute_command('JSON.NUMINCRBY', 'test', '.foo', 1))
+            self.assertEqual('3', r.execute_command('JSON.NUMINCRBY', 'test', '.foo', 2))
+            self.assertEqual('3.5', r.execute_command('JSON.NUMINCRBY', 'test', '.foo', .5))
 
             # test a wrong type
             with self.assertRaises(redis.exceptions.ResponseError) as cm:

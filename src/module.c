@@ -53,6 +53,7 @@
 #define REJSON_ERROR_VALUE_NAN "ERR value is not a number type"
 #define REJSON_ERROR_DICT_SET "ERR could not set key in dictionary"
 #define REJSON_ERROR_ARRAY_SET "ERR could not set item in array"
+#define REJSON_ERROR_ARRAY_GET "ERR could not get item from array"
 #define REJSON_ERROR_DICT_DEL "ERR could not delete from dictionary"
 #define REJSON_ERROR_ARRAY_DEL "ERR could not delete from array"
 #define REJSON_ERROR_INSERT "ERR could not insert into array"
@@ -811,13 +812,15 @@ error:
  * JSON.NUMMULTBY <key> <path> <value>
  * Increments/multiplies the value stored under `path` by `value`.
  * `path` must exist path and must be a number value.
- * Reply: Integer or string, depending on type of result
+ * Reply: String, specifically the resulting JSON number value
 */
 int JSONNum_GenericCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if ((argc < 4)) return RedisModule_WrongArity(ctx);
     RedisModule_AutoMemory(ctx);
 
     const char *cmd = RedisModule_StringPtrLen(argv[0], NULL);
+    double oval, bval, rz;  // original value, by value and the result
+    Object *joval = NULL;   // the by value as a JSON object
 
     // key must be an object type
     RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ);
@@ -846,14 +849,11 @@ int JSONNum_GenericCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
         ReplyWithErrorFmt(ctx, REJSON_ERROR_PATH_NANTYPE, NodeTypeStr(NODETYPE(jpn.n)));
         goto error;
     }
-
-    double oval, bval, rz;  // original value, by value and the result
     oval = NODEVALUE_AS_DOUBLE(jpn.n);
 
     // we use the json parser to convert the bval arg into a value to catch all of JSON's syntices
     size_t vallen;
     const char *val = RedisModule_StringPtrLen(argv[3], &vallen);
-    Object *joval = NULL;
     char *jerr = NULL;
     if (JSONOBJECT_OK != CreateNodeFromJSON(val, vallen, &joval, &jerr)) {
         if (jerr) {
@@ -906,17 +906,21 @@ int JSONNum_GenericCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
         // unlike DictSet, ArraySet does not free so we need to call it explicitly
         Node_Free(jpn.n);
     }
+    jpn.n = orz;
 
-    // reply with the new value
-    if (N_INTEGER == NODETYPE(orz))
-        RedisModule_ReplyWithLongLong(ctx, (long long)rz);
-    else
-        RedisModule_ReplyWithDouble(ctx, rz);
+    // reply with the serialization of the new value
+    JSONSerializeOpt jsopt = {0};
+    sds json = sdsempty();
+    SerializeNodeToJSON(jpn.n, &jsopt, &json);
+    RedisModule_ReplyWithStringBuffer(ctx, json, sdslen(json));
+    sdsfree(json);
 
+    Node_Free(joval);
     JSONPathNode_Free(&jpn);
     return REDISMODULE_OK;
 
 error:
+    Node_Free(joval);
     JSONPathNode_Free(&jpn);
     return REDISMODULE_ERR;
 }
