@@ -393,8 +393,10 @@ int JSONObjKeys_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
 
     // reply with the object's keys if it is a dictionary, error otherwise
     if (N_DICT == NODETYPE(jpn.n)) {
-        RedisModule_ReplyWithArray(ctx, jpn.n->value.dictval.len);
-        for (int i = 0; i < jpn.n->value.dictval.len; i++) {
+        int len = Node_Length(jpn.n);
+        RedisModule_ReplyWithArray(ctx, len);
+        for (int i = 0; i < len; i++) {
+            // TODO: need an iterator for keys in dict
             RedisModule_ReplyWithSimpleString(ctx,
                                               jpn.n->value.dictval.entries[i]->value.kvval.key);
         }
@@ -489,7 +491,7 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
                     // replacing the root is easy
                     RedisModule_DeleteKey(key);
                     RedisModule_ModuleTypeSetValue(key, JSONType, jo);
-                } else if (N_DICT == jpn.p->type) {
+                } else if (N_DICT == NODETYPE(jpn.p)) {
                     if (OBJ_OK != Node_DictSet(jpn.p, jpn.sp.nodes[jpn.sp.len - 1].value.key, jo)) {
                         RM_LOG_WARNING(ctx, "%s", REJSON_ERROR_DICT_SET);
                         RedisModule_ReplyWithError(ctx, REJSON_ERROR_DICT_SET);
@@ -497,7 +499,7 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
                     }
                 } else {  // must be an array
                     int index = jpn.sp.nodes[jpn.sp.len - 1].value.index;
-                    if (index < 0) index = jpn.p->value.arrval.len + index;
+                    if (index < 0) index = Node_Length(jpn.p) + index;
                     if (OBJ_OK != Node_ArraySet(jpn.p, index, jo)) {
                         RM_LOG_WARNING(ctx, "%s", REJSON_ERROR_ARRAY_SET);
                         RedisModule_ReplyWithError(ctx, REJSON_ERROR_ARRAY_SET);
@@ -897,7 +899,7 @@ int JSONNum_GenericCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
         }
     } else {  // container must be an array
         int index = jpn.sp.nodes[jpn.sp.len - 1].value.index;
-        if (index < 0) index = jpn.p->value.arrval.len + index;
+        if (index < 0) index = Node_Length(jpn.p) + index;
         if (OBJ_OK != Node_ArraySet(jpn.p, index, orz)) {
             RM_LOG_WARNING(ctx, "%s", REJSON_ERROR_ARRAY_SET);
             RedisModule_ReplyWithError(ctx, REJSON_ERROR_ARRAY_SET);
@@ -1362,7 +1364,7 @@ int JSONArrTrim_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
     Node_ArrayDelRange(jpn.n, 0, left);
     Node_ArrayDelRange(jpn.n, -right, right);
 
-    RedisModule_ReplyWithLongLong(ctx, (long long)jpn.n->value.arrval.len);
+    RedisModule_ReplyWithLongLong(ctx, (long long)Node_Length(jpn.n));
 
     JSONPathNode_Free(&jpn);
     return REDISMODULE_OK;
