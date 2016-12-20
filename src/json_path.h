@@ -5,8 +5,9 @@
 #include <stdio.h>
 #include <string.h>
 #include "path.h"
+
 #ifdef REDIS_MODULE_TARGET
-#include "../deps/rmutil/alloc.h"
+#include <alloc.h>
 #endif
 
 #define PARSE_OK 0

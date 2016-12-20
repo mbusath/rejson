@@ -1,7 +1,4 @@
 #include "json_object.h"
-/* Open issues:
-- move jsonsl to deps
-*/
 
 /* === Parser === */
 /* A custom context for the JSON lexer. */

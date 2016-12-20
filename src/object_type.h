@@ -2,7 +2,7 @@
 #define __OBJECT_TYPE_H__
 
 #include <string.h>
-#include "../deps/rmutil/vector.h"
+#include <vector.h>
 #include "object.h"
 #include "redismodule.h"
 

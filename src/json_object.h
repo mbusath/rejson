@@ -2,10 +2,10 @@
 #define __JSON_OBJECT_H__
 
 #include <float.h>
+#include <jsonsl.h>
 #include <math.h>
+#include <sds.h>
 #include <stdlib.h>
-#include "../deps/rmutil/sds.h"
-#include "jsonsl.h"
 #include "object.h"
 
 #ifdef REDIS_MODULE_TARGET

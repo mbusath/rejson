@@ -26,8 +26,9 @@ IF(UNIX AND NOT WIN32)
   ENDIF(CMAKE_UNAME)
 ENDIF(UNIX AND NOT WIN32)
 
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib)
 set (RMUTIL_DIR "${PROJECT_SOURCE_DIR}/deps/rmutil")
+set (JSONSL_DIR "${PROJECT_SOURCE_DIR}/deps/jsonsl")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib)
 
 include(CTest)
 enable_testing()
@@ -35,7 +36,7 @@ enable_testing()
 # This helps https://github.com/vector-of-bool/vscode-cmake-tools
 include(CMakeToolsHelpers OPTIONAL)
 
-include_directories("${PROJECT_SOURCE_DIR}/src" $RMUTIL_DIR)
+include_directories("${PROJECT_SOURCE_DIR}/src" ${RMUTIL_DIR} ${JSONSL_DIR})
 add_subdirectory(src)
 add_subdirectory(test)
 
@@ -43,5 +44,4 @@ set(CPACK_PROJECT_NAME ${PROJECT_NAME})
 set(CPACK_PROJECT_VERSION ${PROJECT_VERSION})
 
 include(CPack)
-
 include_directories()

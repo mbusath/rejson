@@ -24,10 +24,10 @@
 #pragma GCC error "rejson must be compiled as a Redis module"
 #endif
 
+#include <logging.h>
+#include <sds.h>
 #include <string.h>
-#include "../deps/rmutil/logging.h"
-#include "../deps/rmutil/sds.h"
-#include "../deps/rmutil/util.h"
+#include <util.h>
 #include "config.h"
 #include "json_object.h"
 #include "json_path.h"
@@ -1037,7 +1037,7 @@ int JSONArrInsert_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, in
 
     // the target must be an array
     if (N_ARRAY != NODETYPE(jpn.n)) {
-        ReplyWithPathTypeError(ctx, N_ARRAY,NODETYPE(jpn.n));
+        ReplyWithPathTypeError(ctx, N_ARRAY, NODETYPE(jpn.n));
         goto error;
     }
 

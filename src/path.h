@@ -6,7 +6,7 @@
 #include "object.h"
 
 #ifdef REDIS_MODULE_TARGET
-#include "../deps/rmutil/alloc.h"
+#include <alloc.h>
 #endif
 
 /* The type of a path node */
