@@ -882,7 +882,7 @@ int JSONNum_GenericCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
         rz = oval * bval;
     }
 
-    // make an object out of the result and replace the target node
+    // make an object out of the result per its type
     Node *orz;
     // the result is an integer only if both values were
     if (N_INTEGER == NODETYPE(jpn.n) && N_INTEGER == NODETYPE(joval))
@@ -891,7 +891,10 @@ int JSONNum_GenericCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
         orz = NewDoubleNode(rz);
 
     // replace the original value with the result depending on the parent container's type
-    if (N_DICT == NODETYPE(jpn.p)) {
+    if (SearchPath_IsRootPath(&jpn.sp)) {
+        RedisModule_DeleteKey(key);
+        RedisModule_ModuleTypeSetValue(key, JSONType, orz);
+    } else if (N_DICT == NODETYPE(jpn.p)) {
         if (OBJ_OK != Node_DictSet(jpn.p, jpn.sp.nodes[jpn.sp.len - 1].value.key, orz)) {
             RM_LOG_WARNING(ctx, "%s", REJSON_ERROR_DICT_SET);
             RedisModule_ReplyWithError(ctx, REJSON_ERROR_DICT_SET);
