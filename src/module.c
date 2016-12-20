@@ -1,5 +1,5 @@
 /*
-* rejson -
+* ReJSON - a JSON data type for Redis
 * Copyright (C) 2016 Redis Labs
 *
 * This program is free software: you can redistribute it and/or modify
@@ -16,12 +16,8 @@
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-/* Issues/Open
- - sds must: cc -Bsymbolic & ld -fvisibility=hidden
-*/
-
 #ifndef REDIS_MODULE_TARGET
-#pragma GCC error "rejson must be compiled as a Redis module"
+#pragma GCC error "ReJSON must be compiled as a Redis module"
 #endif
 
 #include <logging.h>
@@ -37,7 +33,7 @@
 
 #define JSONTYPE_ENCODING_VERSION 0
 #define JSONTYPE_NAME "OBJECT-RL"
-#define RLMODULE_NAME "REJSON"
+#define RLMODULE_NAME "ReJSON"
 #define RLMODULE_DESC "JSON data type for Redis"
 
 #define RM_LOGLEVEL_WARNING "warning"

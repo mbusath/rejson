@@ -6,10 +6,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/param.h>
-#include "../deps/rmutil/vector.h"
+#include <vector.h>
 
 #ifdef REDIS_MODULE_TARGET
-#include "../deps/rmutil/alloc.h"
+#include <alloc.h>
 #endif
 
 // Return code from successful ops
