@@ -199,7 +199,7 @@ void _ObjectTypeToResp_Begin(Node *n, void *ctx) {
                 break;
             case N_KEYVAL:
                 RedisModule_ReplyWithArray(ctx, 2);
-                RedisModule_ReplyWithSimpleString(ctx, n->value.kvval.key);
+                RedisModule_ReplyWithStringBuffer(ctx, n->value.kvval.key, strlen(n->value.kvval.key));
                 break;
             case N_DICT:
                 RedisModule_ReplyWithArray(ctx, n->value.dictval.len + 1);

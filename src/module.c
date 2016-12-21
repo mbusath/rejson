@@ -208,15 +208,22 @@ void JSONTypeAofRewrite(RedisModuleIO *aof, RedisModuleString *key, void *value)
 
 // == Module JSON commands ==
 
-/* JSON.RESP <key>
- * Returns the RESP representation of the object at 'key'.
- * Because RESP's only container type is an array, JSON containers are prefixed with a distinctive
- * character indicating their type as follows:
- *  '{' means that the following entries are a dictionary
- *  '[' means that the following entries are an array
- * Boolean literals and (dictionary key names are simple strings. Strings are always quoted.
- * Reply: Array reply, specifically the JSON's object RESP form
- */
+/**
+* JSON.RESP <key>
+* Return the JSON in `key` in RESP.
+*
+* This command uses the following mapping from JSON to RESP:
+* - JSON Null is mapped to the RESP Null Bulk String
+* - JSON `false` and `true` values are mapped to the respective RESP Simple Strings
+* - JSON Numbers are mapped to RESP Integers or RESP Bulk Strings, depending on type
+* - JSON Strings are mapped to RESP Bulk Strings
+* - JSON Arrays are represented as RESP Arrays in which first element is the simple string `[`
+*   followed by the array's elements
+* - JSON Objects are represented as RESP Arrays in which first element is the simple string `{`.
+    Each successive entry represents a key-value pair as a two-entries array of bulk strings.
+*
+* Reply: Array, specifically the JSON's RESP form.
+*/
 int JSONResp_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if ((argc != 2)) return RedisModule_WrongArity(ctx);
     RedisModule_AutoMemory(ctx);
@@ -236,10 +243,11 @@ int JSONResp_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int arg
     return REDISMODULE_OK;
 }
 
-/* JSON.TYPE <key> <path>
- * Reports the type of JSON element at `path`
+/**
+ * JSON.TYPE <key> <path>
+ * Reports the type of JSON value at `path`.
  * If the key or path do not exist, null is returned.
- * Reply: Simple string, specifically the type
+ * Reply: Simple string, specifically the type.
 */
 int JSONType_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     // check args
@@ -285,12 +293,15 @@ error:
     return REDISMODULE_ERR;
 }
 
-/* JSON.ARRLEN <key> <path>
+/**
+ * JSON.ARRLEN <key> <path>
  * JSON.OBJLEN <key> <path>
  * JSON.STRLEN <key> <path>
- * Reports the length of JSON element at `path` in `key`
- * If the key does not exist, null is returned.
- * Reply: Integer, specifically the length of the value or -1 if no length is defined for it.
+ * Report the length of the JSON value at `path` in `key`.
+ *
+ * If the `key` does not exist, null is returned.
+ *
+ * Reply: Integer, specifically the length of the value.
 */
 int JSONLen_GenericCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     // check args
@@ -351,10 +362,13 @@ error:
     return REDISMODULE_ERR;
 }
 
-/* JSON.OBJKEYS <key> <path>
- * Returns the keys in the object referenced by `path`.
- * If the object is empty or either key or path do not exist, null is returned.
- * Reply: Array reply, specifically the key names
+/**
+ * JSON.OBJKEYS <key> <path>
+ * Return the keys in the object that's referenced by `path`.
+ *
+ * If the object is empty, or either key or path do not exist then null is returned.
+ *
+ * Reply: Array, specifically the key names as bulk strings.
 */
 int JSONObjKeys_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     // check args
@@ -397,8 +411,8 @@ int JSONObjKeys_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int 
         RedisModule_ReplyWithArray(ctx, len);
         for (int i = 0; i < len; i++) {
             // TODO: need an iterator for keys in dict
-            RedisModule_ReplyWithSimpleString(ctx,
-                                              jpn.n->value.dictval.entries[i]->value.kvval.key);
+            const char *k = jpn.n->value.dictval.entries[i]->value.kvval.key;
+            RedisModule_ReplyWithStringBuffer(ctx, k, strlen(k));
         }
     } else {
         ReplyWithPathTypeError(ctx, N_DICT, NODETYPE(jpn.n));
@@ -414,21 +428,15 @@ error:
     return REDISMODULE_ERR;
 }
 
-/* JSON.SET <key> <path> <json>
- * Creates or updates the JSON in `key`
- * Paths always begin at the root (`.`). For paths referencing anything deeper than the root, the
- * starting `.`is optional.
- * Any path from the root begins with a key token. Key tokens are specfied by name and are separated
- * by dots, or with assoicative array syntax: `.foo.bar` and `foo["bar"]` both refer to the key
- * `bar` in the dictionary `foo`.
- * Tokens can also be elements from lists and are specified by their 0-based index in brackets (e.g.
- * `.arr[1]`). Negative index values are treated as is with Python's lists.
- * For new keys, `path` must be the root.
- * For existing keys, when the entire  `path` exists, the value it contains is replaced with the
- * `json` value. A key with the value is created when only the last token in the path isn't resolved
- * and its parent is a dictionary. An value is prepended or appended to the parent array if the
- * missing last token is `-inf` or `+inf`, respectively.
- * Reply: Simple string
+/**
+ * JSON.SET <key> <path> <json>
+ * Sets the JSON value at `path` in `key`
+ * 
+ * For new keys the `path` must be the root. For existing keys, when the entire `path` exists, the
+ * value that it contains is replaced with the `json` value. A key (with its respective value) is
+ * added to a JSON Object only if it is the last child in the `path`.
+ * 
+ * Reply: Simple string, OK.
 */
 int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     // check args
@@ -541,15 +549,22 @@ error:
     return REDISMODULE_ERR;
 }
 
-/* JSON.GET <key> [INDENT <indentation-string>] [NEWLINE <newline-string>] [SPACE <space-string>]
+/**
+ * JSON.GET <key> [INDENT indentation-string] [NEWLINE newline-string] [SPACE space-string]
  *                [path ...]
- * Path(s) must be last, if not given defaults to root. A single path is returns the JSON value.
- * Multiple paths return a JSON object in which the keys are the paths and the values are their
- * respective JSON values.
- * INDENT: indentation string
- * NEWLINE: newline string
- * SPACE: space string
- * Reply: String, specifically the JSON
+ * Return the value at `path` in JSON serialized form.
+ * 
+ * This command accepts multiple `path`s, and defaults to the value's root when none are given.
+ * 
+ * The following subcommands change the reply's and are all set to the empty string by default:
+ *   - `INDENT` sets the indentation string for nested levels
+ *   - `NEWLINE` sets the string that's printed at the end of each line
+ *   - `SPACE` sets the string that's put between a key and a value
+ *
+ * Reply: Bulk String, specifically the JSON serialization.
+ * The reply's structure depends on the on the number of paths. A single path results in the value
+ * being itself is returned, whereas multiple paths are returned as a JSON object in which each path
+ * is a key.
 */
 int JSONGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if ((argc < 2)) return RedisModule_WrongArity(ctx);
@@ -664,8 +679,11 @@ error:
     return REDISMODULE_ERR;
 }
 
-/* JSON.MGET <path> <key> [<key> ...]
- * Reply: Array of JSON strings
+/**
+ * JSON.MGET <path> <key> [<key> ...]
+ * Returns the values at `path` from multiple `key`s. Non-existing keys and non-existing paths are
+ * reported as null.
+ * Reply: Array of Bulk Strings, specifically the JSON serialization of the value at each key's path.
 */
 int JSONMGet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     if ((argc < 2)) return RedisModule_WrongArity(ctx);
@@ -738,12 +756,14 @@ error:
     return REDISMODULE_ERR;
 }
 
-/* JSON.DEL <key> <path>
- * Deletes the path in the object
- * Empty keys and non-existing paths are ignored. Deleting an object's root is
+/**
+ * JSON.DEL <key> <path>
+ * Delete the value at `path`.
+ *
+ * Non-existing keys as well as non-existing paths are ignored. Deleting an object's root is
  * equivalent to deleting the key from Redis.
- * Note: this command is not variadic atm, but the reply suggests it might be.
- * Reply: Integer, specificaly the number of paths deleted (0 or 1 for now)
+ *
+ * Reply: Integer], specifically the number of paths deleted (0 or 1).
 */
 int JSONDel_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     // check args
@@ -810,7 +830,8 @@ error:
     return REDISMODULE_ERR;
 }
 
-/* JSON.NUMINCRBY <key> <path> <value>
+/**
+ * JSON.NUMINCRBY <key> <path> <value>
  * JSON.NUMMULTBY <key> <path> <value>
  * Increments/multiplies the value stored under `path` by `value`.
  * `path` must exist path and must be a number value.
@@ -930,9 +951,10 @@ error:
     return REDISMODULE_ERR;
 }
 
-/* JSON.STRAPPEND <key> <path> <json-string>
- * Appends the `json-string` value(s) the string at `path`.
- * Reply: Integer, specifically the strings's new size
+/**
+ * JSON.STRAPPEND <key> <path> <json-string>
+ * Append the `json-string` value(s) the string at `path`.
+ * Reply: Integer, specifically the string's new length.
 */
 int JSONStrAppend_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     // check args
@@ -1007,10 +1029,13 @@ error:
     return REDISMODULE_ERR;
 }
 
-/* JSON.ARRINSERT <key> <path> <index> <json> [<json> ...]
- * Inserts the `json` value(s) into the array at `path` before the `index` (shifts to the right)
- * Inserting at index 0 is the equivalent of prepending to it (i.e. LPUSH). The index must exist in
- * the target array and negative values are interpreted as expected.
+/**
+ * JSON.ARRINSERT <key> <path> <index> <json> [<json> ...]
+ * Insert the `json` value(s) into the array at `path` before the `index` (shifts to the right).
+ *
+ * The index must be in the array's range. Inserting at `index` 0 prepends to the array. Negative
+ * index values are interpreted as starting from the end.
+ *
  * Reply: Integer, specifically the array's new size
 */
 int JSONArrInsert_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
@@ -1118,7 +1143,7 @@ error:
 }
 
 /* JSON.ARRAPPEND <key> <path> <json> [<json> ...]
- * Appends the `json` value(s) into the array at `path` after the last element in it.
+ * Append the `json` value(s) into the array at `path` after the last element in it.
  * Reply: Integer, specifically the array's new size
 */
 int JSONArrAppend_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
@@ -1209,13 +1234,17 @@ error:
     return REDISMODULE_ERR;
 }
 
-/* JSON.ARRINDEX <key> <path> <scalar> [start] [stop]
- * Returns the lowest index of a scalar value in the array.
- * The optional inclusive start (default 0) and exclusive stop (default 0, meaning the last element
- * is included) specify a slice of the array.
- * Note: out of range errors are treated by rounding the index to the arrays start/end. An inverse
- * index range will return unfound.
- * Reply: Integer, specifically the position of the scalar or -1 if unfound
+/**
+ * JSON.ARRINDEX <key> <path> <scalar> [start] [stop]
+ * Search for the first occurance of a scalar JSON value in an array.
+ *
+ * The optional inclusive `start` (default 0) and exclusive `stop` (default 0, meaning that the last
+ * element is included) specify a slice of the array to search.
+ *
+ * Note: out of range errors are treated by rounding the index to the array's start and end. An
+ * inverse index range (e.g, from 1 to 0) will return unfound.
+ *
+ * Reply: Integer, specifically the position of the scalar value in the array or -1 if unfound.
 */
 int JSONArrIndex_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     // check args
@@ -1297,12 +1326,16 @@ error:
     return REDISMODULE_ERR;
 }
 
-/* JSON.ARRTRIM <key> <path> <start> <stop>
-* Trim an existing array so that it will contain only the specified inclusive range of elements.
-* Out of range indexes will not produce an error: if start is larger than the array or start > stop,
-* the result will be an empty array. If start is < 0 then it will be treated as 0. If end is larger
-* than the end of the array, it will be treated like the last element in it.
-* Reply: Integer, specifically the array's new size
+/**
+* JSON.ARRTRIM <key> <path> <start> <stop>
+* Trim an array so that it contains only the specified inclusive range of elements.
+*
+* This command is extremely forgiving and using it with out of range indexes will not produce an
+* error. If `start` is larger than the array's size or `start` > `stop`, the result will be an empty
+* array. If `start` is < 0 then it will be treated as 0. If end is larger than the end of the array,
+* it will be treated like the last element in it.
+*
+* Reply: Integer, specifically the array's new size.
 */
 int JSONArrTrim_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     // check args

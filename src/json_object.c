@@ -51,7 +51,7 @@ void popCallback(jsonsl_t jsn, jsonsl_action_t action, struct jsonsl_state_st *s
                  const jsonsl_char_t *at) {
     JsonObjectContext *joctx = (JsonObjectContext *)jsn->data;
 
-    // This is a good time to create literals and hashkeys on the stack
+    // This is a good time to create scalars and hashkeys on the stack
     switch (state->type) {
         case JSONSL_T_STRING:
             _pushNode(joctx, NewStringNode(jsn->base + state->pos_begin + 1,
@@ -111,16 +111,16 @@ int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err) {
 
     size_t _off = 0, _len = len;
     char *_buf = (char *)buf;
-    int is_literal = 0;
+    int is_scalar = 0;
 
     // munch any leading whitespaces
     while (_IsAllowedWhitespace(_buf[_off]) && _off < _len) _off++;
 
-    /* Embed literals in a list (also avoids JSONSL_ERROR_STRING_OUTSIDE_CONTAINER).
+    /* Embed scalars in a list (also avoids JSONSL_ERROR_STRING_OUTSIDE_CONTAINER).
      * Copying is necc. evil to avoid messing w/ non-standard string implementations (e.g. sds), but
-     * forgivable because most literals are supposed to be short-ish.
+     * forgivable because most scalars are supposed to be short-ish.
     */
-    if ((is_literal = ('{' != _buf[_off]) && ('[' != _buf[_off]) && _off < _len)) {
+    if ((is_scalar = ('{' != _buf[_off]) && ('[' != _buf[_off]) && _off < _len)) {
         _len = _len - _off + 2;
         _buf = malloc(_len * sizeof(char));
         _buf[0] = '[';
@@ -147,8 +147,8 @@ int CreateNodeFromJSON(const char *buf, size_t len, Node **node, char **err) {
     int rc = JSONOBJECT_OK;
     // success alone isn't an assurance, verify there's something in there too
     if (JSONSL_ERROR_SUCCESS == joctx->err && jsn->stack[jsn->level].nelem) {
-        // extract the literal and discard the wrapper array
-        if (is_literal) {
+        // extract the scalar and discard the wrapper array
+        if (is_scalar) {
             Node_ArrayItem(joctx->nodes[0], 0, node);
             Node_ArraySet(joctx->nodes[0], 0, NULL);
             Node_Free(_popNode(joctx));
