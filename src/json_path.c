@@ -54,11 +54,15 @@ int _tokenizePath(const char *json, size_t len, SearchPath *path) {
 
             // we're after a square bracket opening
             case S_BRACKET:  // [
-                // quote after brackets means dict key
+                // quotes after brackets means dict key
                 if (c == '"') {
                     // skip to the beginnning of the key
                     tok.s++;
-                    st = S_KEY;
+                    st = S_DKEY;
+                } else if (c == '\'') {
+                    // skip to the beginnning of the key
+                    tok.s++;
+                    st = S_SKEY;
                 } else if (isdigit(c)) {
                     // digit after bracket means numeric index
                     tok.len++;
@@ -117,9 +121,24 @@ int _tokenizePath(const char *json, size_t len, SearchPath *path) {
                 break;
 
             // we're within a bracketed string key
-            case S_KEY:
+            case S_DKEY:
                 // end of key
                 if (c == '"') {
+                    if (offset < len - 1 && *(pos + 1) == ']') {
+                        tok.type = T_KEY;
+                        pos += 2;
+                        offset += 2;
+                        st = S_NULL;
+                        goto tokenend;
+                    } else {
+                        goto syntaxerror;
+                    }
+                }
+                tok.len++;
+                break;
+            case S_SKEY:
+                // end of key
+                if (c == '\'') {
                     if (offset < len - 1 && *(pos + 1) == ']') {
                         tok.type = T_KEY;
                         pos += 2;

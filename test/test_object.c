@@ -69,7 +69,7 @@ MU_TEST(testNodeArray) {
     // arr = ["foo", "bar", "baz"]
 
     // Test inserting to the array
-    Node *sub = NewArrayNode(2);    // <- [false, null]
+    Node *sub = NewArrayNode(2);  // <- [false, null]
     mu_check(NULL != sub);
     mu_check(OBJ_OK == Node_ArrayAppend(sub, NewBoolNode(0)));
     mu_check(OBJ_OK == Node_ArrayAppend(sub, NULL));
@@ -82,7 +82,7 @@ MU_TEST(testNodeArray) {
     mu_check(NULL == n);
     // arr = [false, null, "foo", "bar", "baz"]
 
-    sub = NewArrayNode(1);          // <- ["qux"]
+    sub = NewArrayNode(1);  // <- ["qux"]
     mu_check(NULL != sub);
     mu_check(OBJ_OK == Node_ArrayAppend(sub, NewCStringNode("qux")));
     mu_check(OBJ_OK == Node_ArrayInsert(arr, 5, sub));
@@ -93,7 +93,7 @@ MU_TEST(testNodeArray) {
     // arr = [false, null, "foo", "bar", "qux", baz"]
 
     sub = NewArrayNode(2);
-    mu_check(NULL != sub);          // <- [2, 2.719]
+    mu_check(NULL != sub);  // <- [2, 2.719]
     mu_check(OBJ_OK == Node_ArrayAppend(sub, NewIntNode(2)));
     mu_check(OBJ_OK == Node_ArrayAppend(sub, NewDoubleNode(2.719)));
     mu_check(OBJ_OK == Node_ArrayInsert(arr, -1, sub));
@@ -118,7 +118,7 @@ MU_TEST(testNodeArray) {
     mu_assert_int_eq(-1, Node_ArrayIndex(arr, n, 0, 5));
     mu_assert_int_eq(-1, Node_ArrayIndex(arr, n, 0, -3));
     mu_assert_int_eq(-1, Node_ArrayIndex(arr, n, 0, 1));
-    mu_assert_int_eq(-1, Node_ArrayIndex(arr, n, -10, -9));    
+    mu_assert_int_eq(-1, Node_ArrayIndex(arr, n, -10, -9));
     Node_Free(n);
 
     n = NewDoubleNode(2.719);
@@ -305,7 +305,7 @@ MU_TEST(testPathArray) {
     mu_assert_int_eq(Node_Length(arr), 5);
 
     // test positive index path
-    for(int i = 0; i < 5; i++) {
+    for (int i = 0; i < 5; i++) {
         sp = NewSearchPath(1);
         SearchPath_AppendIndex(&sp, i);
         pe = SearchPath_Find(&sp, arr, &n);
@@ -317,7 +317,7 @@ MU_TEST(testPathArray) {
     }
 
     // test negative index path
-    for(int i = -1; i > -6; i--) {
+    for (int i = -1; i > -6; i--) {
         sp = NewSearchPath(1);
         SearchPath_AppendIndex(&sp, i);
         pe = SearchPath_Find(&sp, arr, &n);
@@ -345,7 +345,7 @@ MU_TEST(testPathArray) {
 }
 
 MU_TEST(testPathParse) {
-    const char *path = "foo.bar[3][\"baz\"].bar[\"boo\"][\"\"][6379][-17].$nake_ca$e____";
+    const char *path = "foo.bar[3][\"baz\"].bar[\"boo\"][''][6379][-17].$nake_ca$e____";
 
     SearchPath sp = NewSearchPath(0);
     int rc = ParseJSONPath(path, strlen(path), &sp);
@@ -364,9 +364,9 @@ MU_TEST(testPathParse) {
     mu_check(sp.nodes[8].type == NT_INDEX && sp.nodes[8].value.index == -17);
 
     const char *badpaths[] = {
-        "3",          "6379",       "foo[bar]", "foo[]",         "foo[3",        "bar[\"]",
-        "foo..bar",   "foo['bar']", "foo/bar",  "foo.bar[-1.2]", "foo.bar[1.1]", "foo.bar[+3]",
-        "1foo",   "f?oo", "foo\n",  "foo\tbar", "foobar[-i]", NULL};
+        "3",        "6379",        "foo[bar]", "foo[]",         "foo[3",        "bar[\"]",
+        "foo..bar", "foo[\"bar']", "foo/bar",  "foo.bar[-1.2]", "foo.bar[1.1]", "foo.bar[+3]",
+        "1foo",     "f?oo",        "foo\n",    "foo\tbar",      "foobar[-i]",   NULL};
 
     for (int idx = 0; badpaths[idx] != NULL; idx++) {
         mu_check(ParseJSONPath(badpaths[idx], strlen(badpaths[idx]), &sp) == PARSE_ERR);

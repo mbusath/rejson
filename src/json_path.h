@@ -38,13 +38,14 @@ typedef enum {
 
 // tokenizer state
 typedef enum {
-    S_NULL,
-    S_IDENT,
-    S_NUMBER,
-    S_KEY,
-    S_BRACKET,
-    S_DOT,
-    S_MINUS,
+    S_NULL,         // start state
+    S_IDENT,        // an identifier
+    S_NUMBER,       // an index number
+    S_DKEY,         // a key in double quotes
+    S_SKEY,         // a key in single quotes
+    S_BRACKET,      // subscript (could be a key or an index)
+    S_DOT,          // child separator
+    S_MINUS,        // a negative index
 } tokenizerState;
 
 // the token we're now on
