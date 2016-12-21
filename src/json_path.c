@@ -41,8 +41,8 @@ int _tokenizePath(const char *json, size_t len, SearchPath *path) {
                         st = S_BRACKET;
                         break;
                     default:
-                        // only alpha allowed in the beginning
-                        if (isalpha(c)) {
+                        // only letters, dollar signs and underscores are allowed at the beginning
+                        if (isalpha(c) || '$' == 'c' || '_' == c) {
                             tok.len++;
                             st = S_IDENT;
                             break;
@@ -74,8 +74,8 @@ int _tokenizePath(const char *json, size_t len, SearchPath *path) {
 
             // we're after a dot
             case S_DOT:
-                // start of ident token
-                if (isalpha(c)) {
+                // start of ident token, can only be a letter, dollar sign or underscore
+                if (isalpha(c) || '$' == c || '_' == c) {
                     tok.len++;
                     st = S_IDENT;
                 } else {
@@ -108,8 +108,8 @@ int _tokenizePath(const char *json, size_t len, SearchPath *path) {
                     offset++;
                     goto tokenend;
                 }
-                // we only allow letters, numbers and underscores in identifiers
-                if (!isalnum(c) && c != '_') {
+                // we only allow letters, numbers, dollar signs and underscores in identifiers
+                if (!isalnum(c) && '$' != c && '_' != c) {
                     goto syntaxerror;
                 }
                 // advance one
@@ -153,7 +153,8 @@ int _tokenizePath(const char *json, size_t len, SearchPath *path) {
             goto tokenend;
         }
         continue;
-    tokenend : {
+
+    tokenend: {
         if (T_INDEX == tok.type) {
             // convert the string to int. we can't use atoi because it expects
             // NULL termintated strings
