@@ -29,7 +29,7 @@
 ## JSON
 
 ReJSON aims at providing full support for
-[ECMA-404 The JSON Data Interchange Standard](http://json.org/). 
+[ECMA-404 The JSON Data Interchange Standard](http://json.org/).
 
 In the below, the term _JSON Value_ refers to any of the valid values. A _Container_ is either a
 _JSON Array_ or a _JSON Object_. A _JSON Scalar_ is a _JSON Number_, a _JSON String_ or a literal
@@ -43,13 +43,12 @@ a subset of common best practices.
 Paths always begin at the root of a ReJSON value. The root is denoted by the period character (`.`).
 For paths referencing the root's children, prefixing the path with the root is optional.
 
-Dotted- and square-bracket-quoted-child notation are both supported for objects, so the following
-paths all refer to _boo_, child of _foo_ under the root:
-interchangable:
+Dotted- and square-bracketed, single-or-double-quoted-child notation are both supported for object
+keys, so the following paths all refer to _boo_, child of _foo_ under the root:
 
 *   `.foo.bar`
 *   `foo["bar"]`
-*   `["foo"]["bar"]`
+*   `['foo']["bar"]`
 
 Array elements are accessed by their index enclosed by a pair of square brackets. The index is
 0-based, with 0 being the first element of the array, 1 being the next element and so on. These
