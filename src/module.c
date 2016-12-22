@@ -134,46 +134,45 @@ int NodeFromJSONPath(Node *root, const RedisModuleString *path, JSONPathNode_t *
     return PARSE_OK;
 }
 
-/* Replies with error with printf-like fmt */
-// TODO: sanitize output against protocol-breaking chars (e.g. \n)
-void ReplyWithErrorFmt(RedisModuleCtx *ctx, const char *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    sds err = sdscatfmt(sdsempty(), fmt, ap);
-    va_end(ap);
+void ReplyWithPathTypeError(RedisModuleCtx *ctx, NodeType expected, NodeType actual) {
+    sds err = sdscatfmt(sdsempty(), REJSON_ERROR_PATH_WRONGTYPE, NodeTypeStr(expected), NodeTypeStr(actual));
     RedisModule_ReplyWithError(ctx, err);
     sdsfree(err);
-}
-
-void ReplyWithPathTypeError(RedisModuleCtx *ctx, NodeType expected, NodeType actual) {
-    ReplyWithErrorFmt(ctx, REJSON_ERROR_PATH_WRONGTYPE, NodeTypeStr(expected), NodeTypeStr(actual));
 }
 
 /* Generic path error reply handler */
 void ReplyWithPathError(RedisModuleCtx *ctx, const JSONPathNode_t *jpn) {
     // TODO: report actual position in path & literal token
+    PathNode *epn = &jpn->sp.nodes[jpn->errlevel];
+    sds err = sdsnew("ERR ");
     switch (jpn->err) {
         case E_OK:
-            ReplyWithErrorFmt(ctx, "ERR nothing wrong with path '%*.s'", (int)jpn->spathlen,
-                              jpn->spath);
+            err = sdscat(err, "ERR nothing wrong with path");
             break;
         case E_BADTYPE:
-            ReplyWithErrorFmt(ctx, "ERR invalid key/index token at level %d in path '%*.s'",
-                              jpn->errlevel, (int)jpn->spathlen, jpn->spath);
+            if (NT_KEY == epn->type) {
+                err = sdscatfmt(err, "ERR invalid index '[\"%s\"]' at level %i in path",
+                              epn->value.key, jpn->errlevel);
+            } else {
+                err = sdscatfmt(err, "ERR invalid key '[%i]' at level %i in path",
+                              epn->value.index, jpn->errlevel);
+            }
             break;
         case E_NOINDEX:
-            ReplyWithErrorFmt(ctx, "ERR index out of range at level %d in path '%*.s'",
-                              jpn->errlevel, (int)jpn->spathlen, jpn->spath);
+            err = sdscatfmt(err, "ERR index '[%i]' out of range at level %i in path",
+                              epn->value.index, jpn->errlevel);
             break;
         case E_NOKEY:
-            ReplyWithErrorFmt(ctx, "ERR key does not exist at level %d in path '%*.s'",
-                              jpn->errlevel, (int)jpn->spathlen, jpn->spath);
+            err = sdscatfmt(err, "ERR key '%s' does not exist at level %i in path",
+                              epn->value.key, jpn->errlevel);
             break;
         default:
-            ReplyWithErrorFmt(ctx, "ERR unknown path error at level %d in path '%*.s'",
-                              jpn->errlevel, (int)jpn->spathlen, jpn->spath);
+            err = sdscatfmt(err, "ERR unknown path error at level %i in path",
+                              jpn->errlevel);
             break;
     }  // switch (err)
+    RedisModule_ReplyWithError(ctx, err);
+    sdsfree(err);
 }
 
 // == JSONType type methods ==
@@ -870,7 +869,9 @@ int JSONNum_GenericCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int ar
 
     // verify that the target value is a number
     if (N_INTEGER != NODETYPE(jpn.n) && N_NUMBER != NODETYPE(jpn.n)) {
-        ReplyWithErrorFmt(ctx, REJSON_ERROR_PATH_NANTYPE, NodeTypeStr(NODETYPE(jpn.n)));
+        sds err = sdscatfmt(sdsempty(), REJSON_ERROR_PATH_NANTYPE, NodeTypeStr(NODETYPE(jpn.n)));
+        RedisModule_ReplyWithError(ctx, err);
+        sdsfree(err);
         goto error;
     }
     oval = NODEVALUE_AS_DOUBLE(jpn.n);
@@ -1014,9 +1015,10 @@ int JSONStrAppend_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, in
 
     // the value must be a string
     if (N_STRING != NODETYPE(jo)) {
-        ReplyWithErrorFmt(ctx, "ERR wrong type of value - expected %s but found %s",
+        sds err = sdscatfmt(sdsempty(), "ERR wrong type of value - expected %s but found %s",
                           NodeTypeStr(N_STRING), NodeTypeStr(NODETYPE(jpn.n)));
-        goto error;
+        RedisModule_ReplyWithError(ctx, err);
+        sdsfree(err);
     }
 
     // actually concatenate the strings

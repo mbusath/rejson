@@ -2,29 +2,29 @@
 
 ## Quick reference
 
-*   [ReJSON type commands](#json-type-commands)
-    *   [`JSON.DEL`](#json-del) deletes a value
-    *   [`JSON.GET`](#json-get) gets a value
-    *   [`JSON.MGET`](#json-mget) gets a value from multiple ReJSON keys
-    *   [`JSON.SET`](#json-set) sets a value
-    *   [`JSON.TYPE`](#json-type) reports the type of a value
+*   [ReJSON data type commands](#rejson-data-type-commands)
+    *   [`JSON.DEL`](#del) deletes a value
+    *   [`JSON.GET`](#get) gets a value
+    *   [`JSON.MGET`](#mget) gets a value from multiple ReJSON keys
+    *   [`JSON.SET`](#set) sets a value
+    *   [`JSON.TYPE`](#type) reports the type of a value
 *   [Number operations](#number-operations)
-    *   [`JSON.NUMINCRBY`](#json-numincrby) increments a number
-    *   [`JSON.NUMMULTBY`](#json-nummultby) multiplies a number
+    *   [`JSON.NUMINCRBY`](#numincrby) increments a number
+    *   [`JSON.NUMMULTBY`](#nummultby) multiplies a number
 *   [String operations](#string-operations)
-    *   [`JSON.STRAPPEND`](#json-strappend) appends a string to a string
-    *   [`JSON.STRLEN`](#json-strlen) reports a string's length
+    *   [`JSON.STRAPPEND`](#strappend) appends a string to a string
+    *   [`JSON.STRLEN`](#strlen) reports a string's length
 *   [Array operations](#array-operations)
-    *   [`JSON.ARRAPPEND`](#json-arrappend) appends values to an array
-    *   [`JSON.ARRINDEX`](#json-arrindex) searches for the first occurance of a value in an array
-    *   [`JSON.ARRINSERT`](#json-arrinsert) inserts values in an array
-    *   [`JSON.ARRLEN`](#json-arrlen) reports the array's length
-    *   [`JSON.ARRTRIM`](#json-arrtrim) trims an array to contain only a range of elements
+    *   [`JSON.ARRAPPEND`](#arrappend) appends values to an array
+    *   [`JSON.ARRINDEX`](#arrindex) searches for the first occurance of a value in an array
+    *   [`JSON.ARRINSERT`](#arrinsert) inserts values in an array
+    *   [`JSON.ARRLEN`](#arrlen) reports the array's length
+    *   [`JSON.ARRTRIM`](#arrtrim) trims an array to contain only a range of elements
 *   [Object operations](#object-operations)
-    *   [`JSON.OBJKEYS`](#json-objkeys) returns the keys in an object
-    *   [`JSON.OBJLEN`](#json-objlen) reports the number of keys in an object
+    *   [`JSON.OBJKEYS`](#objkeys) returns the keys in an object
+    *   [`JSON.OBJLEN`](#objlen) reports the number of keys in an object
 *   [Other commands](#other-commands)
-    *   [`JSON.RESP`](#json-resp) returns a JSON value using Redis Serialization Protocol
+    *   [`JSON.RESP`](#resp) returns a JSON value using Redis Serialization Protocol
 
 ## JSON
 
@@ -63,16 +63,16 @@ possible to have ReJSON store objects containing arbitrary key names, accessing 
 path will only be possible if they respect these naming syntax rules:
 
 1.  Names must begin with a letter, a dollar (`$`) or an underscore (`_`) character
-1.  Names can contain letters, digits, dollar signs and underscores
-1.  Names are sensitive, case-wise
+2.  Names can contain letters, digits, dollar signs and underscores
+3.  Names are sensitive, case-wise
 
 ### Time complexity of path evaluation
 
 The complexity of searching (navigating to) an element in the path is made of:
 
 1. Child level - every level along the path adds an additional search
-1. Key search - O(N)<sup>&#8224;</sup>, where N is the number of keys in the parent object
-1. Array search - O(1)
+2. Key search - O(N)<sup>&#8224;</sup>, where N is the number of keys in the parent object
+3. Array search - O(1)
 
 This means that the overall time complexity of searching a path is _O(N*M)_, where N is the depth
 and M is the number of parent object keys.
@@ -80,9 +80,9 @@ and M is the number of parent object keys.
 <sup>&#8224;</sup> while this is acceptable for objects where N is small, access in larger ones can
 be optimized. This is planned for a future version.
 
-## JSON type commands
+## ReJSON data type commands
 
-### <a name="json-del" />`JSON.DEL <key> <path>`
+### <a name="del" />`JSON.DEL <key> <path>`
 
 > **Available since 1.0.0.**  
 > **Time complexity:**  O(N), where N is the size of the deleted value.
@@ -96,7 +96,7 @@ equivalent to deleting the key from Redis.
 
 [Integer][2], specifically the number of paths deleted (0 or 1).
 
-### <a name="json-get" />`JSON.GET <key> [INDENT indentation-string] [NEWLINE line-break-string] [SPACE space-string] [path ...]`
+### <a name="get" />`JSON.GET <key> [INDENT indentation-string] [NEWLINE line-break-string] [SPACE space-string] [path ...]`
 
 > **Available since 1.0.0.**  
 > **Time complexity:**  O(N), where N is the size of the value.
@@ -125,7 +125,7 @@ The reply's structure depends on the on the number of paths. A single path resul
 being itself is returned, whereas multiple paths are returned as a JSON object in which each path
 is a key.
 
-### <a name="json-mget" />`JSON.MGET <key> [key ...] <path>`
+### <a name="mget" />`JSON.MGET <key> [key ...] <path>`
 
 > **Available since 1.0.0.**  
 > **Time complexity:**  O(M*N), where M is the number of keys and N is the size of the value.
@@ -138,7 +138,7 @@ reported as null.
 [Array][4] of [Bulk Strings][3], specifically the JSON serialization of the value at each key's
 path.
 
-### <a name="json-set" />`JSON.SET <key> <path> <json>`
+### <a name="set" />`JSON.SET <key> <path> <json>`
 
 > **Available since 1.0.0.**  
 > **Time complexity:**  O(M+N), where M is the size of the original value (if it exists) and N is
@@ -154,7 +154,7 @@ added to a JSON Object only if it is the last child in the `path`.
 
 [Simple String][1]: `OK`.
 
-### <a name="json-type" />`JSON.TYPE <key> <path>`
+### <a name="type" />`JSON.TYPE <key> <path>`
 
 > **Available since 1.0.0.**  
 > **Time complexity:**  O(1).
@@ -171,7 +171,7 @@ Increments the number value stored at `path` by `number`.
 
 ## Number operations
 
-### <a name="json-numincrby" />`JSON.NUMINCRBY <key> <path> <number>`
+### <a name="numincrby" />`JSON.NUMINCRBY <key> <path> <number>`
 
 > **Available since 1.0.0.**  
 > **Time complexity:**  O(1).
@@ -182,7 +182,7 @@ Increments the number value stored at `path` by `number`.
 
 [Bulk String][3], specifically the stringified new value.
 
-### <a name="json-nummultby" />`JSON.NUMMULTBY <key> <path> <number>`
+### <a name="nummultby" />`JSON.NUMMULTBY <key> <path> <number>`
 
 > **Available since 1.0.0.**  
 > **Time complexity:**  O(1).
@@ -194,7 +194,7 @@ Multiplies the number value stored at `path` by `number`.
 
 ## String operations
 
-### <a name="json-strappend" />`JSON.STRAPPEND <key> <path> <json-string>`
+### <a name="strappend" />`JSON.STRAPPEND <key> <path> <json-string>`
 
 > **Available since 1.0.0.**  
 > **Time complexity:**  O(N), where N is the new string's length.
@@ -204,7 +204,7 @@ Append the `json-string` value(s) the string at `path`.
 #### Return value
 [Integer][2], specifically the string's new length.
 
-### <a name="json-strlen" />`JSON.STRLEN <key> <path>`
+### <a name="strlen" />`JSON.STRLEN <key> <path>`
 
 > **Available since 1.0.0.**  
 > **Time complexity:**  O(1).
@@ -219,7 +219,7 @@ If the `key` does not exist, null is returned
 
 ## Array operations
 
-### <a name="json-arrappend" />`JSON.ARRAPPEND <key> <path> <json> [json ...]`
+### <a name="arrappend" />`JSON.ARRAPPEND <key> <path> <json> [json ...]`
 
 > **Available since 1.0.0.**  
 > **Time complexity:**  O(1).
@@ -230,7 +230,7 @@ Append the `json` value(s) into the array at `path` after the last element in it
 
 [Integer][2], specifically the array's new size.
 
-### <a name="json-arrindex" />`JSON.ARRINDEX <key> <path> <json-scalar> [start] [stop]`
+### <a name="arrindex" />`JSON.ARRINDEX <key> <path> <json-scalar> [start] [stop]`
 
 > **Available since 1.0.0.**  
 > **Time complexity:**  O(N), where N is the array's size.
@@ -247,7 +247,7 @@ inverse index range (e.g, from 1 to 0) will return unfound.
 
 [Integer][2], specifically the position of the scalar value in the array or -1 if unfound.
 
-### <a name="json-arrinsert" />`JSON.ARRINSERT <key> <path> <index> <json> [json ...]`
+### <a name="arrinsert" />`JSON.ARRINSERT <key> <path> <index> <json> [json ...]`
 
 > **Available since 1.0.0.**  
 > **Time complexity:**  O(N), where N is the array's size.
@@ -261,7 +261,7 @@ index values are interpreted as starting from the end.
 
 [Integer][2], specifically the array's new size.
 
-### <a name="json-arrlen" />`JSON.ARRLEN <key> <path>`
+### <a name="arrlen" />`JSON.ARRLEN <key> <path>`
 
 > **Available since 1.0.0.**  
 > **Time complexity:**  O(1).
@@ -274,7 +274,7 @@ If the `key` does not exist, null is returned
 
 [Integer][2], specifically the array's length.
 
-### <a name="json-arrtrim" />`JSON.ARRTRIM <key> <path> <start> <stop>`
+### <a name="arrtrim" />`JSON.ARRTRIM <key> <path> <start> <stop>`
 
 > **Available since 1.0.0.**  
 > **Time complexity:**  O(N), where N is the array's size.
@@ -292,7 +292,7 @@ it will be treated like the last element in it.
 
 ## Object operations
 
-### <a name="json-objkeys" />`JSON.OBJKEYS <key> <path>`
+### <a name="objkeys" />`JSON.OBJKEYS <key> <path>`
 
 > **Available since 1.0.0.**  
 > **Time complexity:**  O(N), where N is the number of keys in the object.
@@ -305,7 +305,7 @@ If the object is empty, or either key or path do not exist then null is returned
 
 [Array][4], specifically the key names in the object as [Bulk Strings][3].
 
-### <a name="json-objlen" />`JSON.OBJLEN <key> <path>`
+### <a name="objlen" />`JSON.OBJLEN <key> <path>`
 
 > **Available since 1.0.0.**  
 > **Time complexity:**  O(1).
@@ -320,11 +320,11 @@ If the `key` does not exist, null is returned
 
 ## Other commands
 
-### <a name="json-forget" />`JSON.FORGET <key> <path>`
+### <a name="forget" />`JSON.FORGET <key> <path>`
 
-This command is an alias for [`JSON.DEL`](#json-del).
+This command is an alias for [`JSON.DEL`](#del).
 
-### <a name="json-resp" />`JSON.RESP <key>`
+### <a name="resp" />`JSON.RESP <key>`
 
 > **Available since 1.0.0.**  
 > **Time complexity:**  O(N), where N is the size of the JSON value.
@@ -337,10 +337,10 @@ This command uses the following mapping from JSON to RESP:
 -   JSON Numbers are mapped to [RESP Integers][2] or [RESP Bulk Strings][3], depending on type
 -   JSON Strings are mapped to [RESP Bulk Strings][3]
 -   JSON Arrays are represented as [RESP Arrays][4] in which first element is the
-        [simple string][1] `[` followed by the array's elements
+          [simple string][1] `[` followed by the array's elements
 -   JSON Objects are represented as [RESP Arrays][4] in which first element is the
-        [simple string][1] `{`. Each successive entry represents a key-value pair as a two-entries
-        [array][4] of [bulk strings][3].
+          [simple string][1] `{`. Each successive entry represents a key-value pair as a two-entries
+          [array][4] of [bulk strings][3].
 
 #### Return value
 

@@ -1,22 +1,35 @@
 # ReJSON - a JSON data type for Redis
 
+ReJSON is a Redis module that implements
+[ECMA-404 The JSON Data Interchange Standard](http://json.org/) as a native data type. It allows
+storing, updating and fetching JSON values from Redis keys (documents). The JSON values are managed
+as binary objects, thus allowing Redis-blazing performance. 
+
 ## Quickstart
 
 1.  [Build the ReJSON module library](#building-the-module-library)
 1.  [Load ReJSON to Redis](#loading-the-module-to-redis)
-1.  [Use it to store, manipulate and fetch JSON data](docs/commands.md)
+1.  [Use it from **any** Redis client](#using-rejson), e.g.:
 
-TODO: cli transcript and/or animated gif that shows off some of the features.
+````
+~$/ redis-cli
+127.0.0.1:6379> JSON.SET doc . '{ "foo": "bar", "baz": [42, true] }'
+OK
+127.0.0.1:6379> JSON.GET doc .baz[0]
+"42"
+127.0.0.1:6379> JSON.DEL doc .foo
+1
+127.0.0.1:6379> JSON.OBJKEYS doc .
+1) "baz"
+````
 
 ## What is ReJSON
 
-### Path syntax
-
-### Summary of commands
-
 ## Limitations and known issues
 
+* Alpha quality
 * AOF rewrite will fail for documents with serialization over 0.5GB?
+* Searching for object keys is O(N)
 
 ## Building the module library
 
@@ -79,11 +92,18 @@ Lastly, you can also use the [`MODULE LOAD`](http://redis.io/commands/module-loa
 however, that `MODULE LOAD` is a dangerous command and may be blocked/deprecated in the future due
 to security considerations.
 
+## Using ReJSON
+
+Link to docs/commands
+Basic Python and Node examples to illustrate the use of a raw command.
+
 ## Testing and development
 
-Link to design.md
+Link to docs/design.md
 
-Setting the path to the Redis server executable for unit testing.
+Setting the path to the Redis server executable for unit testing: `REDIS_SERVER_PATH` CMake variable
+
+`valgrind --tool=memcheck --suppressions=../redis/src/valgrind.sup ../redis/src/redis-server --loadmodule ./lib/rejson.so`
 
 ## Contributing
 
