@@ -1,4 +1,3 @@
-"""ReJSON module unit test"""
 from rmtest import ModuleTestCase
 import redis
 import unittest
@@ -59,12 +58,24 @@ class ReJSONTestCase(ModuleTestCase(module_path=module_path, redis_path=redis_pa
     def testSetRootWithInvalidJSONValuesShouldFail(self):
         """Test that setting the root of a ReJSON key with invalid JSON values fails"""
         with self.redis() as r:
+            r.delete('test')
             invalid = ['{', '}', '[', ']', '{]', '[}', '\\', '\\\\', '',
                        ' ', '\\"', '\'', '\[', '\x00', '\x0a', '\x0c', '\xff']
-            r.delete('test')
             for i in invalid:
                 with self.assertRaises(redis.exceptions.ResponseError) as cm:
                     r.execute_command('JSON.SET', 'test', '.', i)
+                self.assertNotExists(r, 'test')
+
+    def testSetInvalidPathShouldFail(self):
+        """Test that invalid paths fail"""
+        with self.redis() as r:
+            r.delete('test')
+            invalid = ['', ' ', '\x00', '\x0a', '\x0c', '\xff',
+                       '."', '.\x00', '.\x0a\x0c', '.-foo', '.43',
+                       '.foo\n.bar']
+            for i in invalid:
+                with self.assertRaises(redis.exceptions.ResponseError) as cm:
+                    r.execute_command('JSON.SET', 'test', i, 'null')
                 self.assertNotExists(r, 'test')
 
     def testSetRootWithJSONValuesShouldSucceed(self):
