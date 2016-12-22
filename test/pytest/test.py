@@ -1,3 +1,4 @@
+"""ReJSON module unit test"""
 from rmtest import ModuleTestCase
 import redis
 import unittest
@@ -52,14 +53,16 @@ module_path = os.environ['REDIS_MODULE_PATH']
 redis_path = os.environ['REDIS_SERVER_PATH']
 
 
-class JSONTestCase(ModuleTestCase(module_path=module_path, redis_path=redis_path)):
+class ReJSONTestCase(ModuleTestCase(module_path=module_path, redis_path=redis_path)):
+    """Tests ReJSON Redis module in vitro"""
 
-    def testSetRootWithIllegalValuesShouldFail(self):
+    def testSetRootWithInvalidJSONValuesShouldFail(self):
+        """Test that setting the root of a ReJSON key with invalid JSON values fails"""
         with self.redis() as r:
-            illegal = ['{', '}', '[', ']', '{]', '[}', '\\', '\\\\', '',
+            invalid = ['{', '}', '[', ']', '{]', '[}', '\\', '\\\\', '',
                        ' ', '\\"', '\'', '\[', '\x00', '\x0a', '\x0c', '\xff']
             r.delete('test')
-            for i in illegal:
+            for i in invalid:
                 with self.assertRaises(redis.exceptions.ResponseError) as cm:
                     r.execute_command('JSON.SET', 'test', '.', i)
                 self.assertNotExists(r, 'test')
@@ -74,7 +77,8 @@ class JSONTestCase(ModuleTestCase(module_path=module_path, redis_path=redis_path
                 self.assertEqual(r.execute_command('JSON.GET', 'test'), v)
 
     def testSetReplaceRootShouldSucceed(self):
-        """Test that replacing the root of an existing key with a valid object succeeds"""
+        """Test replacing the root of an existing key with a valid object succeeds"""
+
         with self.redis() as r:
             r.delete('test')
             self.assertOk(r.execute_command('JSON.SET', 'test', '.', json.dumps(docs['basic'])))
@@ -88,6 +92,8 @@ class JSONTestCase(ModuleTestCase(module_path=module_path, redis_path=redis_path
                 self.assertEqual(data, v)
 
     def testSetGetWholeBasicDocumentShouldBeEqual(self):
+        """Test basic JSON.GET/JSON.SET"""
+
         with self.redis() as r:
             r.delete('test')
             data = json.dumps(docs['basic'])
@@ -97,32 +103,26 @@ class JSONTestCase(ModuleTestCase(module_path=module_path, redis_path=redis_path
                 r.execute_command('JSON.GET', 'test'))), data)
 
     def testGetNonExistantPathsFromBasicDocumentShouldFail(self):
+        """Test failure of getting non-existing values"""
+
         with self.redis() as r:
             r.delete('test')
             self.assertOk(r.execute_command('JSON.SET', 'test',
                                             '.', json.dumps(docs['scalars'])))
-            with self.assertRaises(redis.exceptions.ResponseError) as cm:
-                r.execute_command('JSON.GET', 'test', '.foo')
 
-            with self.assertRaises(redis.exceptions.ResponseError) as cm:
-                r.execute_command('JSON.GET', 'test', '.key1[0]')
+            # Paths that do not exist
+            paths = ['.foo', 'boo', '.key1[0]', '.key2.bar', '.key5[99]', '.key5["moo"]']
+            for p in paths:
+                with self.assertRaises(redis.exceptions.ResponseError) as cm:
+                    r.execute_command('JSON.GET', 'test', p)
 
+            # Test failure in multi-path get
             with self.assertRaises(redis.exceptions.ResponseError) as cm:
-                r.execute_command('JSON.GET', 'test', '.key2.bar')
-
-            with self.assertRaises(redis.exceptions.ResponseError) as cm:
-                r.execute_command('JSON.GET', 'test', '.key5[99]')
-
-            with self.assertRaises(redis.exceptions.ResponseError) as cm:
-                r.execute_command('JSON.GET', 'test', '.key5["moo"]')
-
-            with self.assertRaises(redis.exceptions.ResponseError) as cm:
-                r.execute_command('JSON.GET', 'test', '.bool', '.key5["moo"]')
-
-            with self.assertRaises(redis.exceptions.ResponseError) as cm:
-                r.execute_command('JSON.GET', 'test', '.key5["moo"]', '.bool')
+                r.execute_command('JSON.GET', 'test', '.bool', paths[0])
 
     def testGetPartsOfValuesDocumentOneByOne(self):
+        """Test type and value returned by JSON.GET"""
+
         with self.redis() as r:
             r.delete('test')
             self.assertOk(r.execute_command('JSON.SET', 'test',
@@ -133,6 +133,8 @@ class JSONTestCase(ModuleTestCase(module_path=module_path, redis_path=redis_path
                 self.assertEqual(data, v)
 
     def testGetPartsOfValuesDocumentMultiple(self):
+        """Test correctnes of an object returned by JSON.GET"""
+
         with self.redis() as r:
             r.delete('test')
             self.assertOk(r.execute_command('JSON.SET', 'test',
@@ -141,18 +143,23 @@ class JSONTestCase(ModuleTestCase(module_path=module_path, redis_path=redis_path
             self.assertDictEqual(data, docs['values'])
 
     def testMgetCommand(self):
+        """Test REJSON.MGET command"""
+
         with self.redis() as r:
+            # Set up a few keys
             for d in range(0, 5):
                 key = 'doc:{}'.format(d)
                 r.delete(key)
                 self.assertOk(r.execute_command('JSON.SET', key, '.', json.dumps(docs['basic'])))
 
+            # Test an MGET that succeeds on all keys
             raw = r.execute_command('JSON.MGET', '.', *['doc:{}'.format(d) for d in range(0, 5)])
             self.assertEqual(len(raw), 5)
             for d in range(0, 5):
                 key = 'doc:{}'.format(d)
                 self.assertDictEqual(json.loads(raw[d]), docs['basic'])
 
+            # Test an MGET that fails for one key
             r.delete('test')
             self.assertOk(r.execute_command('JSON.SET', 'test', '.', '{"bool":false}'))
             raw = r.execute_command('JSON.MGET', '.bool', 'test', 'doc:0', 'foo')
@@ -162,12 +169,17 @@ class JSONTestCase(ModuleTestCase(module_path=module_path, redis_path=redis_path
             self.assertEqual(raw[2], None)
 
     def testDelCommand(self):
+        """Test REJSON.DEL command"""
+
         with self.redis() as r:
             r.delete('test')
+
+            # Test deleting an empty object
             self.assertOk(r.execute_command('JSON.SET', 'test', '.', '{}'))
             self.assertEqual(r.execute_command('JSON.DEL', 'test', '.'), 1)
             self.assertNotExists(r, 'test')
 
+            # Test deleting some keys from an object
             self.assertOk(r.execute_command('JSON.SET', 'test', '.', '{}'))
             self.assertOk(r.execute_command('JSON.SET', 'test', '.foo', '"bar"'))
             self.assertOk(r.execute_command('JSON.SET', 'test', '.baz', '"qux"'))
@@ -179,10 +191,10 @@ class JSONTestCase(ModuleTestCase(module_path=module_path, redis_path=redis_path
             self.assertIsNone(r.execute_command('JSON.TYPE', 'test', '.foo'))
             self.assertEqual(r.execute_command('JSON.TYPE', 'test', '.'), 'object')
 
+            # Test with an array
             self.assertOk(r.execute_command('JSON.SET', 'test', '.foo', '"bar"'))
             self.assertOk(r.execute_command('JSON.SET', 'test', '.baz', '"qux"'))
             self.assertOk(r.execute_command('JSON.SET', 'test', '.arr', '[1.2,1,2]'))
-
             self.assertEqual(r.execute_command('JSON.DEL', 'test', '.arr[1]'), 1)
             self.assertEqual(r.execute_command('JSON.OBJLEN', 'test', '.'), 3)
             self.assertEqual(r.execute_command('JSON.ARRLEN', 'test', '.arr'), 2)
@@ -192,57 +204,127 @@ class JSONTestCase(ModuleTestCase(module_path=module_path, redis_path=redis_path
             self.assertEqual(r.execute_command('JSON.DEL', 'test', '.'), 1)
             self.assertIsNone(r.execute_command('JSON.GET', 'test'))
 
-    def testDictionaryCRUD(self):
+    def testObjectCRUD(self):
+        """Test JSON Object CRUDness"""
         with self.redis() as r:
             r.delete('test')
-            self.assertOk(r.execute_command('JSON.SET', 'test', '.', '{ "dict": {} }'))
-            raw = r.execute_command('JSON.GET', 'test', '.dict')
+
+            # Create an object
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.', '{ }'))
+            self.assertEqual('object', r.execute_command('JSON.TYPE', 'test', '.'))
+            self.assertEqual(0, r.execute_command('JSON.OBJLEN', 'test', '.'))
+            raw = r.execute_command('JSON.GET', 'test')
             data = json.loads(raw)
             self.assertDictEqual(data, {})
 
+            # Test failure to access a non-existing element
             with self.assertRaises(redis.exceptions.ResponseError) as cm:
-                r.execute_command('JSON.GET', 'test', '.dict.foo')
+                r.execute_command('JSON.GET', 'test', '.foo')
 
-            self.assertOk(r.execute_command('JSON.SET', 'test', '.dict.foo', '"bar"'))
+            # Test setting a key in the oject
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.foo', '"bar"'))
+            self.assertEqual(1, r.execute_command('JSON.OBJLEN', 'test', '.'))
             raw = r.execute_command('JSON.GET', 'test', '.')
             data = json.loads(raw)
-            self.assertDictEqual(data, {u'dict': {u'foo': u'bar'}})
-            raw = r.execute_command('JSON.GET', 'test', '.dict')
+            self.assertDictEqual(data, {u'foo': u'bar'})
+
+            # Test replacing a key's value in the object
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.foo', '"baz"'))
+            raw = r.execute_command('JSON.GET', 'test', '.')
+            data = json.loads(raw)
+            self.assertDictEqual(data, {u'foo': u'baz'})
+
+            # Test adding another key to the object
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.boo', '"far"'))
+            self.assertEqual(2, r.execute_command('JSON.OBJLEN', 'test', '.'))
+            raw = r.execute_command('JSON.GET', 'test', '.')
+            data = json.loads(raw)
+            self.assertDictEqual(data, {u'foo': u'baz', u'boo': u'far'})
+
+            # Test deleting a key from the object
+            self.assertEqual(1, r.execute_command('JSON.DEL', 'test', '.foo'))
+            raw = r.execute_command('JSON.GET', 'test', '.')
+            data = json.loads(raw)
+            self.assertDictEqual(data, {u'boo': u'far'})
+
+            # Test replacing the object
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.', '{"foo": "bar"}'))
+            raw = r.execute_command('JSON.GET', 'test', '.')
             data = json.loads(raw)
             self.assertDictEqual(data, {u'foo': u'bar'})
-            raw = r.execute_command('JSON.GET', 'test', '.dict.foo')
-            data = json.loads(raw)
-            self.assertEqual(data, u'bar')
-            # TODO: continue testing
+
+            # Test deleting the object
+            self.assertEqual(1, r.execute_command('JSON.DEL', 'test', '.'))
+            self.assertIsNone(r.execute_command('JSON.GET', 'test', '.'))
 
     def testArrayCRUD(self):
+        """Test JSON Array CRUDness"""
+
         with self.redis() as r:
             r.delete('test')
-            self.assertOk(r.execute_command('JSON.SET', 'test', '.', '{ "arr": [] }'))
-            with self.assertRaises(redis.exceptions.ResponseError) as cm:
-                r.execute_command('JSON.SET', 'test', '.arr[0]', 0)
-            with self.assertRaises(redis.exceptions.ResponseError) as cm:
-                r.execute_command('JSON.SET', 'test', '.arr[19]', 0)
-            with self.assertRaises(redis.exceptions.ResponseError) as cm:
-                r.execute_command('JSON.SET', 'test', '.arr[-1]', 0)
 
-            self.assertEqual(1, r.execute_command('JSON.ARRAPPEND', 'test', '.arr', 1))
-            self.assertEqual(2, r.execute_command('JSON.ARRINSERT', 'test', '.arr', 0, -1))
-            data = json.loads(r.execute_command('JSON.GET', 'test', '.arr'))
+            # Test creation of an empty array
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.', '[]'))
+            self.assertEqual('array', r.execute_command('JSON.TYPE', 'test', '.'))
+            self.assertEqual(0, r.execute_command('JSON.ARRLEN', 'test', '.'))
+
+            # Test failure of setting an element at different positons in an empty array
+            with self.assertRaises(redis.exceptions.ResponseError) as cm:
+                r.execute_command('JSON.SET', 'test', '[0]', 0)
+            with self.assertRaises(redis.exceptions.ResponseError) as cm:
+                r.execute_command('JSON.SET', 'test', '[19]', 0)
+            with self.assertRaises(redis.exceptions.ResponseError) as cm:
+                r.execute_command('JSON.SET', 'test', '[-1]', 0)
+
+            # Test appending and inserting elements to the array
+            self.assertEqual(1, r.execute_command('JSON.ARRAPPEND', 'test', '.', 1))
+            self.assertEqual(1, r.execute_command('JSON.ARRLEN', 'test', '.'))
+            self.assertEqual(2, r.execute_command('JSON.ARRINSERT', 'test', '.', 0, -1))
+            self.assertEqual(2, r.execute_command('JSON.ARRLEN', 'test', '.'))
+            data = json.loads(r.execute_command('JSON.GET', 'test', '.'))
             self.assertListEqual([-1, 1, ], data)
-            self.assertEqual(3, r.execute_command('JSON.ARRINSERT', 'test', '.arr', -1, 0))
-            data = json.loads(r.execute_command('JSON.GET', 'test', '.arr'))
+            self.assertEqual(3, r.execute_command('JSON.ARRINSERT', 'test', '.', -1, 0))
+            data = json.loads(r.execute_command('JSON.GET', 'test', '.'))
             self.assertListEqual([-1, 0, 1, ], data)
-            self.assertEqual(5, r.execute_command('JSON.ARRINSERT', 'test', '.arr', -3, -3, -2))
-            data = json.loads(r.execute_command('JSON.GET', 'test', '.arr'))
+            self.assertEqual(5, r.execute_command('JSON.ARRINSERT', 'test', '.', -3, -3, -2))
+            data = json.loads(r.execute_command('JSON.GET', 'test', '.'))
             self.assertListEqual([-3, -2, -1, 0, 1, ], data)
-            self.assertEqual(7, r.execute_command('JSON.ARRAPPEND', 'test', '.arr', 2, 3))
-            data = json.loads(r.execute_command('JSON.GET', 'test', '.arr'))
+            self.assertEqual(7, r.execute_command('JSON.ARRAPPEND', 'test', '.', 2, 3))
+            data = json.loads(r.execute_command('JSON.GET', 'test', '.'))
             self.assertListEqual([-3, -2, -1, 0, 1, 2, 3], data)
 
-            # TODO: continue testing
+            # Test replacing elements in the array
+            self.assertOk(r.execute_command('JSON.SET', 'test', '[0]', '"-inf"'))
+            self.assertOk(r.execute_command('JSON.SET', 'test', '[-1]', '"+inf"'))
+            self.assertOk(r.execute_command('JSON.SET', 'test', '[3]', 'null'))
+            data = json.loads(r.execute_command('JSON.GET', 'test', '.'))
+            self.assertListEqual([u'-inf', -2, -1, None, 1, 2, u'+inf'], data)
+
+            # Test deleting from the array
+            self.assertEqual(1, r.execute_command('JSON.DEL', 'test', '[1]'))
+            self.assertEqual(1, r.execute_command('JSON.DEL', 'test', '[-2]'))
+            data = json.loads(r.execute_command('JSON.GET', 'test', '.'))
+            self.assertListEqual([u'-inf', -1, None, 1, u'+inf'], data)
+
+            # Test trimming the array
+            self.assertEqual(4, r.execute_command('JSON.ARRTRIM', 'test', '.', 1, -1))
+            data = json.loads(r.execute_command('JSON.GET', 'test', '.'))
+            self.assertListEqual([-1, None, 1, u'+inf'], data)
+            self.assertEqual(3, r.execute_command('JSON.ARRTRIM', 'test', '.', 0, -2))
+            data = json.loads(r.execute_command('JSON.GET', 'test', '.'))
+            self.assertListEqual([-1, None, 1], data)
+            self.assertEqual(1, r.execute_command('JSON.ARRTRIM', 'test', '.', 1, 1))
+            data = json.loads(r.execute_command('JSON.GET', 'test', '.'))
+            self.assertListEqual([None], data)
+
+            # Test replacing the array
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.', '[true]'))
+            self.assertEqual('array', r.execute_command('JSON.TYPE', 'test', '.'))
+            self.assertEqual(1, r.execute_command('JSON.ARRLEN', 'test', '.'))
+            self.assertEqual('true', r.execute_command('JSON.GET', 'test', '[0]'))
 
     def testArrIndexCommand(self):
+        """Test JSON.ARRINDEX command"""
         with self.redis() as r:
             r.delete('test')
             self.assertOk(r.execute_command('JSON.SET', 'test',
@@ -264,6 +346,8 @@ class JSONTestCase(ModuleTestCase(module_path=module_path, redis_path=redis_path
             self.assertEqual(r.execute_command('JSON.ARRINDEX', 'test', '.arr', '[4]'), -1)
 
     def testArrTrimCommand(self):
+        """Test JSON.ARRTRIM command"""
+
         with self.redis() as r:
             r.delete('test')
             self.assertOk(r.execute_command('JSON.SET', 'test',
@@ -281,6 +365,8 @@ class JSONTestCase(ModuleTestCase(module_path=module_path, redis_path=redis_path
             self.assertListEqual(json.loads(r.execute_command('JSON.GET', 'test', '.arr')), [])
 
     def testTypeCommand(self):
+        """Test JSON.TYPE command"""
+
         with self.redis() as r:
             for k, v in docs['types'].iteritems():
                 r.delete('test')
@@ -289,6 +375,9 @@ class JSONTestCase(ModuleTestCase(module_path=module_path, redis_path=redis_path
                 self.assertEqual(reply, k)
 
     def testLenCommands(self):
+        """Test the JSON.ARRLEN, JSON.OBJLEN and JSON.STRLEN commands"""
+
+        # TODO: this needs to be a part of each value type test suite instead
         with self.redis() as r:
             r.delete('test')
 
@@ -324,6 +413,8 @@ class JSONTestCase(ModuleTestCase(module_path=module_path, redis_path=redis_path
                 r.execute_command('JSON.LEN', 'test', '.arr[-inf]')
 
     def testObjKeysCommand(self):
+        """Test JSON.OBJKEYS command"""
+
         with self.redis() as r:
             r.delete('test')
             self.assertOk(r.execute_command('JSON.SET', 'test', '.', json.dumps(docs['types'])))
@@ -337,6 +428,8 @@ class JSONTestCase(ModuleTestCase(module_path=module_path, redis_path=redis_path
                 r.execute_command('JSON.OBJKEYS', 'test', '.null')
 
     def testNumIncrCommand(self):
+        """Test JSON.NUMINCRBY command"""
+
         with self.redis() as r:
             r.delete('test')
             self.assertOk(r.execute_command('JSON.SET', 'test', '.', '{ "foo": 0, "bar": "baz" }'))
@@ -351,6 +444,46 @@ class JSONTestCase(ModuleTestCase(module_path=module_path, redis_path=redis_path
             # test a missing path
             with self.assertRaises(redis.exceptions.ResponseError) as cm:
                 r.execute_command('JSON.NUMINCRBY', 'test', '.fuzz', 1)
+
+    def testStrCommands(self):
+        """Test JSON.STRAPPEND and JSON.STRLEN commands"""
+
+        with self.redis() as r:
+            r.delete('test')
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.', '"foo"'))
+            self.assertEqual('string', r.execute_command('JSON.TYPE', 'test', '.'))
+            self.assertEqual(3, r.execute_command('JSON.STRLEN', 'test', '.'))
+            self.assertEqual(6, r.execute_command('JSON.STRAPPEND', 'test', '.', '"bar"'))
+            self.assertEqual('"foobar"', r.execute_command('JSON.GET', 'test', '.'))
+
+    def testRespCommand(self):
+        """Test JSON.RESP command"""
+
+        with self.redis() as r:
+            r.delete('test')
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.', 'null'))
+            self.assertIsNone(r.execute_command('JSON.RESP', 'test'))
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.', 'true'))
+            self.assertEquals('true', r.execute_command('JSON.RESP', 'test'))
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.', 42))
+            self.assertEquals(42, r.execute_command('JSON.RESP', 'test'))
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.', 2.5))
+            self.assertEquals('2.5', r.execute_command('JSON.RESP', 'test'))
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.', '"foo"'))
+            self.assertEquals('foo', r.execute_command('JSON.RESP', 'test'))
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.', '{"foo":"bar"}'))
+            resp = r.execute_command('JSON.RESP', 'test')
+            self.assertEqual(2, len(resp))
+            self.assertEqual('{', resp[0])
+            self.assertEqual(2, len(resp[1]))
+            self.assertEqual('foo', resp[1][0])
+            self.assertEqual('bar', resp[1][1])
+            self.assertOk(r.execute_command('JSON.SET', 'test', '.', '[1,2]'))
+            resp = r.execute_command('JSON.RESP', 'test')
+            self.assertEqual(3, len(resp))
+            self.assertEqual('[', resp[0])
+            self.assertEqual(1, resp[1])
+            self.assertEqual(2, resp[2])
 
 
 if __name__ == '__main__':
