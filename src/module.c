@@ -495,6 +495,7 @@ int JSONSet_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc
         // deal with path errors
         switch (jpn.err) {
             case E_OK:
+                // this means we're good to go so set the value according the parent container
                 if (isRootPath) {
                     // replacing the root is easy
                     RedisModule_DeleteKey(key);
@@ -958,7 +959,7 @@ error:
 */
 int JSONStrAppend_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     // check args
-    if (argc != 3) return RedisModule_WrongArity(ctx);
+    if (argc != 4) return RedisModule_WrongArity(ctx);
     RedisModule_AutoMemory(ctx);
 
     // key can't be empty and must be a JSON type
@@ -1020,6 +1021,7 @@ int JSONStrAppend_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, in
 
     // actually concatenate the strings
     Node_StringAppend(jpn.n, jo);
+    RedisModule_ReplyWithLongLong(ctx, (long long)Node_Length(jpn.n));
 
     JSONPathNode_Free(&jpn);
     return REDISMODULE_OK;
@@ -1468,7 +1470,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx) {
                                   1) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
-    if (RedisModule_CreateCommand(ctx, "json.strappend", JSONStrAppend_RedisCommand, "readonly", 1,
+    if (RedisModule_CreateCommand(ctx, "json.strappend", JSONStrAppend_RedisCommand, "write deny-oom", 1,
                                   1, 1) == REDISMODULE_ERR)
         return REDISMODULE_ERR;
 
