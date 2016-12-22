@@ -2,6 +2,7 @@ from rmtest import ModuleTestCase
 import redis
 import unittest
 import json
+import os
 
 docs = {
     'simple': {
@@ -47,9 +48,11 @@ docs = {
     },
 }
 
+module_path = os.environ['REDIS_MODULE_PATH']
+redis_path = os.environ['REDIS_SERVER_PATH']
 
-class JSONTestCase(ModuleTestCase(module_path='../../lib/rejson.so', redis_path='../../../redis/src/redis-server')):
-    # TODO: inject paths from upper
+
+class JSONTestCase(ModuleTestCase(module_path=module_path, redis_path=redis_path)):
 
     def testSetRootWithIllegalValuesShouldFail(self):
         with self.redis() as r:
@@ -226,13 +229,13 @@ class JSONTestCase(ModuleTestCase(module_path='../../lib/rejson.so', redis_path=
             self.assertEqual(1, r.execute_command('JSON.ARRAPPEND', 'test', '.arr', 1))
             self.assertEqual(2, r.execute_command('JSON.ARRINSERT', 'test', '.arr', 0, -1))
             data = json.loads(r.execute_command('JSON.GET', 'test', '.arr'))
-            self.assertListEqual([-1, 1,], data)
+            self.assertListEqual([-1, 1, ], data)
             self.assertEqual(3, r.execute_command('JSON.ARRINSERT', 'test', '.arr', -1, 0))
             data = json.loads(r.execute_command('JSON.GET', 'test', '.arr'))
-            self.assertListEqual([-1, 0, 1,], data)
+            self.assertListEqual([-1, 0, 1, ], data)
             self.assertEqual(5, r.execute_command('JSON.ARRINSERT', 'test', '.arr', -3, -3, -2))
             data = json.loads(r.execute_command('JSON.GET', 'test', '.arr'))
-            self.assertListEqual([-3, -2, -1, 0, 1,], data)
+            self.assertListEqual([-3, -2, -1, 0, 1, ], data)
             self.assertEqual(7, r.execute_command('JSON.ARRAPPEND', 'test', '.arr', 2, 3))
             data = json.loads(r.execute_command('JSON.GET', 'test', '.arr'))
             self.assertListEqual([-3, -2, -1, 0, 1, 2, 3], data)
