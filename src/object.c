@@ -163,7 +163,7 @@ int Node_ArrayDelRange(Node *arr, const int index, const int count) {
 
     if (count <= 0 || !a->len) return OBJ_OK;
 
-    int start = index < 0 ? MAX(a->len + index, 0) : MIN(start, a->len - 1);
+    int start = index < 0 ? MAX(a->len + index, 0) : MIN(index, a->len - 1);
     int stop = MIN(start + count, a->len);  // stop is exclusive
 
     // free range
